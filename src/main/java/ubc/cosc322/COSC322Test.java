@@ -34,7 +34,9 @@ public class COSC322Test extends GamePlayer{
      * @param args for name and passwd (current, any string would work)
      */
     public static void main(String[] args) {				 
-    	String userName = (args.length > 0 && args[0] != null && !args[0].trim().isEmpty()) ? args[0] : "cosc322";
+    	String userName = (args.length > 0 && args[0] != null && !args[0].trim().isEmpty()) 
+    			? args[0] 
+    			: "cosc322_" + (System.currentTimeMillis() % 100000);
     	String passwd = (args.length > 1 && args[1] != null && !args[1].trim().isEmpty()) ? args[1] : "cosc322";
     	COSC322Test player = new COSC322Test(userName, passwd);
 
@@ -68,8 +70,6 @@ public class COSC322Test extends GamePlayer{
 		}
     	this.gamegui = new BaseGameGUI(this);
     }
- 
-
 
 	@Override
 		public void onLogin() {
