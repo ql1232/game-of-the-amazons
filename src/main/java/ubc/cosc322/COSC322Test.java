@@ -21,20 +21,33 @@ import ygraph.ai.smartfox.games.amazons.AmazonsGameMessage;
  *
  */
 public class COSC322Test extends GamePlayer{
+    private static final String DEFAULT_ROOM = "Okanagan Lake";
 
     private GameClient gameClient = null; 
     private BaseGameGUI gamegui = null;
 	
     private String userName = "cosc322";
     private String passwd = "cosc322";
- 	private ArrayList<Integer> gameBoard;
+    private String autoJoinRoom = null;
 	
     /**
      * The main method
      * @param args for name and passwd (current, any string would work)
      */
     public static void main(String[] args) {				 
-    	COSC322Test player = new COSC322Test("args[2]", "args[1]");
+        String userName = (args.length > 0 && !args[0].trim().isEmpty())
+            ? args[0].trim()
+            : "cosc322_" + System.currentTimeMillis() % 100000;
+        String passwd = (args.length > 1 && !args[1].trim().isEmpty())
+            ? args[1].trim()
+            : "cosc322";
+        String roomToJoin = (args.length > 2 && !args[2].trim().isEmpty())
+            ? args[2].trim()
+            : DEFAULT_ROOM;
+
+        System.out.println("Starting player: user=" + userName + ", room=" + roomToJoin);
+
+    	COSC322Test player = new COSC322Test(userName, passwd, roomToJoin);
 
     	if(player.getGameGUI() == null) {
     		player.Go();
@@ -55,16 +68,17 @@ public class COSC322Test extends GamePlayer{
       * @param passwd
      */
     public COSC322Test(String userName, String passwd) {
-    	this.userName = userName;
-    	this.passwd = passwd;
-    	
+        this(userName, passwd, null);
+    }
+
+    public COSC322Test(String userName, String passwd, String autoJoinRoom) {
+        this.userName = userName;
+        this.passwd = passwd;
+        this.autoJoinRoom = autoJoinRoom;
+
     	//To make a GUI-based player, create an instance of BaseGameGUI
     	//and implement the method getGameGUI() accordingly
-		this.gameBoard=new ArrayList<>();
-		for(int i = 0; i<1000; i++){
-			this.gameBoard.add(0);
-		}
-    	this.gamegui = new BaseGameGUI(this);
+        this.gamegui = new BaseGameGUI(this);
     }
  
 
@@ -75,6 +89,10 @@ public class COSC322Test extends GamePlayer{
 		if(gamegui != null) {
 			gamegui.setRoomInformation(gameClient.getRoomList());
 		}
+
+        if (autoJoinRoom != null && !autoJoinRoom.isEmpty()) {
+            gameClient.joinRoom(autoJoinRoom);
+        }
 	}
 
     @Override
@@ -84,13 +102,24 @@ public class COSC322Test extends GamePlayer{
 	
     	//For a detailed description of the message types and format, 
     	//see the method GamePlayer.handleGameMessage() in the game-client-api document.
-		if (messageType.equals(GameMessage.GAME_STATE_BOARD)){
-			this.getGameGUI().setGameState((ArrayList<Integer>) msgDetails.get(AmazonsGameMessage.GAME_STATE));
+		if (GameMessage.GAME_STATE_BOARD.equals(messageType)){
+            ArrayList<Integer> gameState = (ArrayList<Integer>) msgDetails.get(AmazonsGameMessage.GAME_STATE);
+            if (this.getGameGUI() != null) {
+			    this.getGameGUI().setGameState(gameState);
+            }
+		} else if (GameMessage.GAME_ACTION_START.equals(messageType)) {
+            String blackPlayer = (String) msgDetails.get(AmazonsGameMessage.PLAYER_BLACK);
+            String whitePlayer = (String) msgDetails.get(AmazonsGameMessage.PLAYER_WHITE);
+            System.out.println("Game started. Black=" + blackPlayer + ", White=" + whitePlayer + ", Me=" + userName);
+            ArrayList<Integer> gameState = (ArrayList<Integer>) msgDetails.get(AmazonsGameMessage.GAME_STATE);
+            if (gameState != null && this.getGameGUI() != null) {
+                this.getGameGUI().setGameState(gameState);
+            }
+        } else if (GameMessage.GAME_ACTION_MOVE.equals(messageType)){
+            if (this.getGameGUI() != null) {
+			    this.getGameGUI().updateGameState(msgDetails);
+            }
 		}
-		if (messageType.equals(GameMessage.GAME_ACTION_MOVE)){
-			this.getGameGUI().updateGameState(msgDetails);
-		}
-		System.out.println();
     	return true;
     }
     
