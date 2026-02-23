@@ -34,7 +34,11 @@ public class COSC322Test extends GamePlayer{
      * @param args for name and passwd (current, any string would work)
      */
     public static void main(String[] args) {				 
-    	COSC322Test player = new COSC322Test("args[2]", "args[1]");
+    	String userName = (args.length > 0 && args[0] != null && !args[0].trim().isEmpty()) 
+    			? args[0] 
+    			: "cosc322_" + (System.currentTimeMillis() % 100000);
+    	String passwd = (args.length > 1 && args[1] != null && !args[1].trim().isEmpty()) ? args[1] : "cosc322";
+    	COSC322Test player = new COSC322Test(userName, passwd);
 
     	if(player.getGameGUI() == null) {
     		player.Go();
@@ -57,7 +61,7 @@ public class COSC322Test extends GamePlayer{
     public COSC322Test(String userName, String passwd) {
     	this.userName = userName;
     	this.passwd = passwd;
-    	
+
     	//To make a GUI-based player, create an instance of BaseGameGUI
     	//and implement the method getGameGUI() accordingly
 		this.gameBoard=new ArrayList<>();
@@ -66,12 +70,11 @@ public class COSC322Test extends GamePlayer{
 		}
     	this.gamegui = new BaseGameGUI(this);
     }
- 
 
-
-    @Override
+	@Override
 		public void onLogin() {
 		userName = gameClient.getUserName();
+		System.out.println("Login success. User=" + userName);
 		if(gamegui != null) {
 			gamegui.setRoomInformation(gameClient.getRoomList());
 		}
@@ -87,10 +90,23 @@ public class COSC322Test extends GamePlayer{
 		if (messageType.equals(GameMessage.GAME_STATE_BOARD)){
 			this.getGameGUI().setGameState((ArrayList<Integer>) msgDetails.get(AmazonsGameMessage.GAME_STATE));
 		}
+		if (messageType.equals(GameMessage.GAME_ACTION_START)) {
+            String blackPlayer = (String) msgDetails.get(AmazonsGameMessage.PLAYER_BLACK);
+            String whitePlayer = (String) msgDetails.get(AmazonsGameMessage.PLAYER_WHITE);
+            System.out.println("\n\nGame started.");
+            System.out.println("Room users at start: Black=" + blackPlayer + ", White=" + whitePlayer);
+            System.out.println("Current login user: " + userName+"\n\n");
+            ArrayList<Integer> gameState = (ArrayList<Integer>) msgDetails.get(AmazonsGameMessage.GAME_STATE);
+            if (gameState != null && this.getGameGUI() != null) {
+                this.getGameGUI().setGameState(gameState);
+            }
+		}
+		if (messageType.equals(GameMessage.GAME_STATE_PLAYER_LOST)) {
+			
+		}
 		if (messageType.equals(GameMessage.GAME_ACTION_MOVE)){
 			this.getGameGUI().updateGameState(msgDetails);
 		}
-		System.out.println();
     	return true;
     }
     
