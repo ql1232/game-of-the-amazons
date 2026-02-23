@@ -1,17 +1,12 @@
 
 package ubc.cosc322;
 
-import java.lang.reflect.Array;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
-import sfs2x.client.entities.Room;
 import ygraph.ai.smartfox.games.BaseGameGUI;
 import ygraph.ai.smartfox.games.GameClient;
 import ygraph.ai.smartfox.games.GameMessage;
 import ygraph.ai.smartfox.games.GamePlayer;
-import ygraph.ai.smartfox.games.amazons.AmazonsBoard;
 import ygraph.ai.smartfox.games.amazons.AmazonsGameMessage;
 
 /**
@@ -20,10 +15,12 @@ import ygraph.ai.smartfox.games.amazons.AmazonsGameMessage;
  * Jan 5, 2021
  *
  */
-public class COSC322Test extends GamePlayer{
+public class ArtificialPlayer extends GamePlayer{
 
     private GameClient gameClient = null; 
     private BaseGameGUI gamegui = null;
+
+	private long timer = -1;
 	
     private String userName = "cosc322";
     private String passwd = "cosc322";
@@ -38,7 +35,7 @@ public class COSC322Test extends GamePlayer{
     			? args[0] 
     			: "cosc322_" + (System.currentTimeMillis() % 100000);
     	String passwd = (args.length > 1 && args[1] != null && !args[1].trim().isEmpty()) ? args[1] : "cosc322";
-    	COSC322Test player = new COSC322Test(userName, passwd);
+    	ArtificialPlayer player = new ArtificialPlayer(userName, passwd);
 
     	if(player.getGameGUI() == null) {
     		player.Go();
@@ -58,7 +55,7 @@ public class COSC322Test extends GamePlayer{
      * @param userName
       * @param passwd
      */
-    public COSC322Test(String userName, String passwd) {
+    public ArtificialPlayer(String userName, String passwd) {
     	this.userName = userName;
     	this.passwd = passwd;
 
@@ -82,6 +79,9 @@ public class COSC322Test extends GamePlayer{
 
     @Override
     public boolean handleGameMessage(String messageType, Map<String, Object> msgDetails) {
+
+		timer = System.currentTimeMillis();
+
     	//This method will be called by the GameClient when it receives a game-related message
     	//from the server.
 	
@@ -109,7 +109,21 @@ public class COSC322Test extends GamePlayer{
 		}
     	return true;
     }
-    
+
+	public ArrayList<ArrayList<Integer>> valid_moves(ArrayList<Integer> pos){
+		//get the valid moves for a given position's queen or arrow
+		//this assumes that there is in fact a queen in the given location
+		//returns a list of all valid coordinates
+		//since queens and arrows follow the same ruleset, just call this method twice to handle both
+
+
+		return null;
+	}
+
+	public int determine_board_value(){
+		//a method to determine the value of a theoretical board state. might be switched to move evaluation in the future.
+		return 0;
+	}
     
     @Override
     public String userName() {
