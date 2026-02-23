@@ -74,6 +74,7 @@ public class COSC322Test extends GamePlayer{
 	@Override
 		public void onLogin() {
 		userName = gameClient.getUserName();
+		System.out.println("Login success. User=" + userName);
 		if(gamegui != null) {
 			gamegui.setRoomInformation(gameClient.getRoomList());
 		}
@@ -92,11 +93,16 @@ public class COSC322Test extends GamePlayer{
 		if (messageType.equals(GameMessage.GAME_ACTION_START)) {
             String blackPlayer = (String) msgDetails.get(AmazonsGameMessage.PLAYER_BLACK);
             String whitePlayer = (String) msgDetails.get(AmazonsGameMessage.PLAYER_WHITE);
-            System.out.println("Game started. Black=" + blackPlayer + ", White=" + whitePlayer + ", Me=" + userName);
+            System.out.println("\n\nGame started.");
+            System.out.println("Room users at start: Black=" + blackPlayer + ", White=" + whitePlayer);
+            System.out.println("Current login user: " + userName+"\n\n");
             ArrayList<Integer> gameState = (ArrayList<Integer>) msgDetails.get(AmazonsGameMessage.GAME_STATE);
             if (gameState != null && this.getGameGUI() != null) {
                 this.getGameGUI().setGameState(gameState);
             }
+		}
+		if (messageType.equals(GameMessage.GAME_STATE_PLAYER_LOST)) {
+			
 		}
 		if (messageType.equals(GameMessage.GAME_ACTION_MOVE)){
 			this.getGameGUI().updateGameState(msgDetails);
