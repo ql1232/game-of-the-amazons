@@ -65,7 +65,6 @@ public class ArtificialPlayer extends GamePlayer{
     			: "cosc322_" + (System.currentTimeMillis() % 100000);
     	String passwd = (args.length > 1 && args[1] != null && !args[1].trim().isEmpty()) ? args[1] : "cosc322";
     	ArtificialPlayer player = new ArtificialPlayer(userName, passwd);
-		player.moveTree = new ArtificialMoveTree(player);
 
     	if(player.getGameGUI() == null) {
     		player.Go();
@@ -144,6 +143,7 @@ public class ArtificialPlayer extends GamePlayer{
 				// Save initial board state and draw it.
 				this.gameBoard = new ArrayList<>(gameState);
                 this.getGameGUI().setGameState(gameState);
+				this.moveTree = new ArtificialMoveTree(this);
             }
 		}
 		if (messageType.equals(GameMessage.GAME_STATE_PLAYER_LOST)) {
