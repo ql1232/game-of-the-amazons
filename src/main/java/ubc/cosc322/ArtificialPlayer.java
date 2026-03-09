@@ -31,8 +31,8 @@ public class ArtificialPlayer extends GamePlayer{
 
     private GameClient gameClient = null; 
     private BaseGameGUI gamegui = null;
+	public int turn_tracker = 0;
 
-	private long timer = -1;
 	private static final int BOARD_DIM = 11;
 	private static final int BLACK_QUEEN = 1;
 	private static final int WHITE_QUEEN = 2;
@@ -41,11 +41,13 @@ public class ArtificialPlayer extends GamePlayer{
     private String userName = "cosc322";
     private String passwd = "cosc322";
 	// Local board snapshot mirrored from server messages.
- 	private ArrayList<Integer> gameBoard;
+	ArrayList<Integer> gameBoard;
 	// Dedicated component that contains heuristic and board utility logic.
-	private final HeuristicEvaluator heuristicEvaluator;
+	final HeuristicEvaluator heuristicEvaluator;
 	// Perspective used when evaluating the board (set on GAME_ACTION_START).
-	private int myPlayerCode = BLACK_QUEEN;
+	int myPlayerCode = BLACK_QUEEN;
+
+	public ArtificialMoveTree moveTree;
 	
     /**
      * Program entry.
@@ -109,9 +111,6 @@ public class ArtificialPlayer extends GamePlayer{
     @Override
     public boolean handleGameMessage(String messageType, Map<String, Object> msgDetails) {
 
-		// Track last game-event timestamp (useful for time-control logic later).
-		timer = System.currentTimeMillis();
-
     	//This method will be called by the GameClient when it receives a game-related message
     	//from the server.
 	
@@ -131,7 +130,9 @@ public class ArtificialPlayer extends GamePlayer{
 			// Detect our side once the game starts; used by heuristic perspective.
 			if (userName.equals(blackPlayer)) {
 				myPlayerCode = BLACK_QUEEN;
+				this.turn_tracker =1;
 			} else if (userName.equals(whitePlayer)) {
+				this.turn_tracker =0;
 				myPlayerCode = WHITE_QUEEN;
 			}
             System.out.println("\n\nGame started.");
@@ -142,6 +143,7 @@ public class ArtificialPlayer extends GamePlayer{
 				// Save initial board state and draw it.
 				this.gameBoard = new ArrayList<>(gameState);
                 this.getGameGUI().setGameState(gameState);
+				this.moveTree = new ArtificialMoveTree(this);
             }
 		}
 		if (messageType.equals(GameMessage.GAME_STATE_PLAYER_LOST)) {
@@ -153,23 +155,20 @@ public class ArtificialPlayer extends GamePlayer{
 			ArrayList<Integer> to = (ArrayList<Integer>) msgDetails.get(AmazonsGameMessage.QUEEN_POS_NEXT);
 			ArrayList<Integer> arrow = (ArrayList<Integer>) msgDetails.get(AmazonsGameMessage.ARROW_POS);
 			// Keep local board state in sync for any subsequent AI calculation.
-			heuristicEvaluator.applyMove(this.gameBoard, from, to, arrow);
+			this.heuristicEvaluator.applyMove(this.gameBoard, from, to, arrow);
+			this.moveTree.progressMove();
 			// Let GUI apply the same update for visualization.
 			this.getGameGUI().updateGameState(msgDetails);
+			this.turn_tracker++;
 		}
     	return true;
     }
 
-	public ArrayList<ArrayList<Integer>> valid_moves(ArrayList<Integer> pos){
-		// Return all queen-like ray moves from pos on current board snapshot.
-		// This utility can be used for both queen movement and arrow shooting.
-		return heuristicEvaluator.generateValidMoves(this.gameBoard, pos);
-	}
-
-	public int determine_board_value(){
-		// Evaluate board quality from our side's perspective.
-		// Higher value means a better strategic position for this player.
-		return heuristicEvaluator.evaluate(this.gameBoard, myPlayerCode);
+	//getter method to obtain the best next move from the ArtificialMoveTree
+	//detailed return syntax is written in AMT's actual method
+	//realistically should be called at the start of this player's turn
+	public ArrayList<ArrayList<Integer>> getNextMove(){
+		return this.moveTree.getNextMove();
 	}
     
     @Override
