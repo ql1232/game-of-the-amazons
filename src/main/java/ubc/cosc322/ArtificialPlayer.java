@@ -1,4 +1,3 @@
-
 package ubc.cosc322;
 
 import java.util.*;
@@ -10,10 +9,23 @@ import ygraph.ai.smartfox.games.GamePlayer;
 import ygraph.ai.smartfox.games.amazons.AmazonsGameMessage;
 
 /**
- * An example illustrating how to implement a GamePlayer
- * @author Yong Gao (yong.gao@ubc.ca)
- * Jan 5, 2021
+ * Game client entry point for COSC322 Amazons.
  *
+ * This class is responsible for:
+ * 1) Connecting to the SmartFox-based game server.
+ * 2) Receiving and forwarding board updates to the GUI.
+ * 3) Keeping a local board snapshot for AI utilities.
+ * 4) Delegating move generation and board scoring to HeuristicEvaluator.
+ *
+ * Board encoding used by the server/client API:
+ * - 0: empty square
+ * - 1: black queen
+ * - 2: white queen
+ * - 3: blocked square (arrow)
+ *
+ * The board is represented as a flattened 11x11 array-list where valid game
+ * coordinates are in [1..10] for both row and column. Index 0 rows/columns are
+ * padding used by the original framework.
  */
 public class ArtificialPlayer extends GamePlayer{
 
@@ -21,14 +33,29 @@ public class ArtificialPlayer extends GamePlayer{
     private BaseGameGUI gamegui = null;
 
 	private long timer = -1;
+	private static final int BOARD_DIM = 11;
+	private static final int BLACK_QUEEN = 1;
+	private static final int WHITE_QUEEN = 2;
 	
+    // Credentials used by GameClient.connect().
     private String userName = "cosc322";
     private String passwd = "cosc322";
+	// Local board snapshot mirrored from server messages.
  	private ArrayList<Integer> gameBoard;
+	// Dedicated component that contains heuristic and board utility logic.
+	private final HeuristicEvaluator heuristicEvaluator;
+	// Perspective used when evaluating the board (set on GAME_ACTION_START).
+	private int myPlayerCode = BLACK_QUEEN;
 	
     /**
-     * The main method
-     * @param args for name and passwd (current, any string would work)
+     * Program entry.
+     *
+     * args[0]: username (optional)
+     * args[1]: password (optional)
+     *
+     * If no username is provided, a timestamp-based name is generated.
+     *
+     * @param args runtime arguments
      */
     public static void main(String[] args) {				 
     	String userName = (args.length > 0 && args[0] != null && !args[0].trim().isEmpty()) 
@@ -51,20 +78,22 @@ public class ArtificialPlayer extends GamePlayer{
     }
 	
     /**
-     * Any name and passwd 
-     * @param userName
-      * @param passwd
+     * Constructs a player instance with GUI and evaluator.
+     *
+     * @param userName login name used by the game service
+     * @param passwd login password used by the game service
      */
     public ArtificialPlayer(String userName, String passwd) {
     	this.userName = userName;
     	this.passwd = passwd;
+		this.heuristicEvaluator = new HeuristicEvaluator();
 
-    	//To make a GUI-based player, create an instance of BaseGameGUI
-    	//and implement the method getGameGUI() accordingly
+    	// Initialize a zero-filled board snapshot with framework-compatible size.
 		this.gameBoard=new ArrayList<>();
-		for(int i = 0; i<1000; i++){
+		for(int i = 0; i < BOARD_DIM * BOARD_DIM; i++){
 			this.gameBoard.add(0);
 		}
+		// GUI is optional in framework design; this project enables it.
     	this.gamegui = new BaseGameGUI(this);
     }
 
@@ -80,6 +109,7 @@ public class ArtificialPlayer extends GamePlayer{
     @Override
     public boolean handleGameMessage(String messageType, Map<String, Object> msgDetails) {
 
+		// Track last game-event timestamp (useful for time-control logic later).
 		timer = System.currentTimeMillis();
 
     	//This method will be called by the GameClient when it receives a game-related message
@@ -88,16 +118,29 @@ public class ArtificialPlayer extends GamePlayer{
     	//For a detailed description of the message types and format, 
     	//see the method GamePlayer.handleGameMessage() in the game-client-api document.
 		if (messageType.equals(GameMessage.GAME_STATE_BOARD)){
-			this.getGameGUI().setGameState((ArrayList<Integer>) msgDetails.get(AmazonsGameMessage.GAME_STATE));
+			// Full board snapshot from server; replace local copy.
+			ArrayList<Integer> boardState = (ArrayList<Integer>) msgDetails.get(AmazonsGameMessage.GAME_STATE);
+			if (boardState != null) {
+				this.gameBoard = new ArrayList<>(boardState);
+				this.getGameGUI().setGameState(boardState);
+			}
 		}
 		if (messageType.equals(GameMessage.GAME_ACTION_START)) {
             String blackPlayer = (String) msgDetails.get(AmazonsGameMessage.PLAYER_BLACK);
             String whitePlayer = (String) msgDetails.get(AmazonsGameMessage.PLAYER_WHITE);
+			// Detect our side once the game starts; used by heuristic perspective.
+			if (userName.equals(blackPlayer)) {
+				myPlayerCode = BLACK_QUEEN;
+			} else if (userName.equals(whitePlayer)) {
+				myPlayerCode = WHITE_QUEEN;
+			}
             System.out.println("\n\nGame started.");
             System.out.println("Room users at start: Black=" + blackPlayer + ", White=" + whitePlayer);
             System.out.println("Current login user: " + userName+"\n\n");
             ArrayList<Integer> gameState = (ArrayList<Integer>) msgDetails.get(AmazonsGameMessage.GAME_STATE);
             if (gameState != null && this.getGameGUI() != null) {
+				// Save initial board state and draw it.
+				this.gameBoard = new ArrayList<>(gameState);
                 this.getGameGUI().setGameState(gameState);
             }
 		}
@@ -105,24 +148,28 @@ public class ArtificialPlayer extends GamePlayer{
 			
 		}
 		if (messageType.equals(GameMessage.GAME_ACTION_MOVE)){
+			// Incremental move update: source, destination, and arrow position.
+			ArrayList<Integer> from = (ArrayList<Integer>) msgDetails.get(AmazonsGameMessage.QUEEN_POS_CURR);
+			ArrayList<Integer> to = (ArrayList<Integer>) msgDetails.get(AmazonsGameMessage.QUEEN_POS_NEXT);
+			ArrayList<Integer> arrow = (ArrayList<Integer>) msgDetails.get(AmazonsGameMessage.ARROW_POS);
+			// Keep local board state in sync for any subsequent AI calculation.
+			heuristicEvaluator.applyMove(this.gameBoard, from, to, arrow);
+			// Let GUI apply the same update for visualization.
 			this.getGameGUI().updateGameState(msgDetails);
 		}
     	return true;
     }
 
 	public ArrayList<ArrayList<Integer>> valid_moves(ArrayList<Integer> pos){
-		//get the valid moves for a given position's queen or arrow
-		//this assumes that there is in fact a queen in the given location
-		//returns a list of all valid coordinates
-		//since queens and arrows follow the same ruleset, just call this method twice to handle both
-
-
-		return null;
+		// Return all queen-like ray moves from pos on current board snapshot.
+		// This utility can be used for both queen movement and arrow shooting.
+		return heuristicEvaluator.generateValidMoves(this.gameBoard, pos);
 	}
 
 	public int determine_board_value(){
-		//a method to determine the value of a theoretical board state. might be switched to move evaluation in the future.
-		return 0;
+		// Evaluate board quality from our side's perspective.
+		// Higher value means a better strategic position for this player.
+		return heuristicEvaluator.evaluate(this.gameBoard, myPlayerCode);
 	}
     
     @Override
