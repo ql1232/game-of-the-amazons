@@ -46,10 +46,11 @@ public class ArtificialMoveTree {
         for(MoveNode m: this.parents){
             if(!m.children.isEmpty()){
                 parent_comp.add(m.children.peek());
+            }else{
+                parent_comp.add(m);
             }
         }
-        MoveNode sol = this.findImmediateNode(parent_comp.peek());
-        return sol;
+        return this.findImmediateNode(parent_comp.peek());
     }
     ArrayList<ArrayList<Integer>> getNextMove(){
         return this.getNextMoveNode().move;
@@ -75,7 +76,10 @@ public class ArtificialMoveTree {
         for(MoveNode m: this.parents){
             for(MoveNode mn: m.children){
                 mn.generateChildren();
-                new_parents.add(mn);
+                if(mn.children.isEmpty()){
+                    new_parents.add(mn.parent);
+                }else{
+                new_parents.add(mn);}
             }
         }
         this.parents=new_parents;
