@@ -252,14 +252,14 @@ public class HeuristicEvaluator {
     /**
      * Reads a cell by converting 2D board coordinates into flattened index.
      */
-    private int getCell(ArrayList<Integer> boardState, int row, int col) {
+    public int getCell(ArrayList<Integer> boardState, int row, int col) {
         return boardState.get(toIndex(row, col));
     }
 
     /**
      * Writes a cell by converting 2D board coordinates into flattened index.
      */
-    private void setCell(ArrayList<Integer> boardState, int row, int col, int value) {
+    public void setCell(ArrayList<Integer> boardState, int row, int col, int value) {
         boardState.set(toIndex(row, col), value);
     }
 
