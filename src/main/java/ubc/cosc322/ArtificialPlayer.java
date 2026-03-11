@@ -144,6 +144,13 @@ public class ArtificialPlayer extends GamePlayer{
 				this.gameBoard = new ArrayList<>(gameState);
                 this.getGameGUI().setGameState(gameState);
 				this.moveTree = new ArtificialMoveTree(this);
+				// Black moves first; send our opening move immediately.
+				if (myPlayerCode == BLACK_QUEEN) {
+					ArrayList<ArrayList<Integer>> move = this.getNextMove();
+					if (move != null) {
+						gameClient.sendMoveMessage(move.get(0), move.get(1), move.get(2));
+					}
+				}
             }
 		}
 		if (messageType.equals(GameMessage.GAME_STATE_PLAYER_LOST)) {
@@ -154,12 +161,22 @@ public class ArtificialPlayer extends GamePlayer{
 			ArrayList<Integer> from = (ArrayList<Integer>) msgDetails.get(AmazonsGameMessage.QUEEN_POS_CURR);
 			ArrayList<Integer> to = (ArrayList<Integer>) msgDetails.get(AmazonsGameMessage.QUEEN_POS_NEXT);
 			ArrayList<Integer> arrow = (ArrayList<Integer>) msgDetails.get(AmazonsGameMessage.ARROW_POS);
+			// Determine if this is the opponent's move before mutating the board.
+			boolean isOpponentMove = (from != null && from.size() >= 2
+					&& heuristicEvaluator.getCell(this.gameBoard, from.get(0), from.get(1)) != myPlayerCode);
 			// Keep local board state in sync for any subsequent AI calculation.
 			this.heuristicEvaluator.applyMove(this.gameBoard, from, to, arrow);
 			this.moveTree.progressMove();
 			// Let GUI apply the same update for visualization.
 			this.getGameGUI().updateGameState(msgDetails);
 			this.turn_tracker++;
+			// After the opponent moves it is our turn — compute and send our response.
+			if (isOpponentMove) {
+				ArrayList<ArrayList<Integer>> move = this.getNextMove();
+				if (move != null) {
+					gameClient.sendMoveMessage(move.get(0), move.get(1), move.get(2));
+				}
+			}
 		}
     	return true;
     }
