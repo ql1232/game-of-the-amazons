@@ -2,6 +2,7 @@ package ubc.cosc322;
 
 import java.util.*;
 
+import com.smartfoxserver.v2.entities.data.SFSObject;
 import ygraph.ai.smartfox.games.BaseGameGUI;
 import ygraph.ai.smartfox.games.GameClient;
 import ygraph.ai.smartfox.games.GameMessage;
@@ -31,7 +32,7 @@ public class ArtificialPlayer extends GamePlayer{
 
     private GameClient gameClient = null; 
     private BaseGameGUI gamegui = null;
-	public int turn_tracker = 0;
+	public int turn_tracker = 1;
 
 	private static final int BOARD_DIM = 11;
 	private static final int BLACK_QUEEN = 1;
@@ -108,8 +109,11 @@ public class ArtificialPlayer extends GamePlayer{
 		}
 	}
 
+
     @Override
     public boolean handleGameMessage(String messageType, Map<String, Object> msgDetails) {
+		System.out.println("Current turn: " + this.turn_tracker);
+		System.out.println("GAME MESSAGE RECEIVED");
 
     	//This method will be called by the GameClient when it receives a game-related message
     	//from the server.
@@ -119,7 +123,9 @@ public class ArtificialPlayer extends GamePlayer{
 		if (messageType.equals(GameMessage.GAME_STATE_BOARD)){
 			ArrayList<Integer> gameS = (ArrayList)msgDetails.get("game-state");
 			System.out.println("Game Board: " + gameS);
+			this.gameBoard = gameS;
 			this.gamegui.setGameState(gameS);
+			this.turn_tracker=1;
 		}
 		if (messageType.equals(GameMessage.GAME_ACTION_START)) {
             String blackPlayer = (String) msgDetails.get(AmazonsGameMessage.PLAYER_BLACK);
@@ -127,16 +133,20 @@ public class ArtificialPlayer extends GamePlayer{
 			// Detect our side once the game starts; used by heuristic perspective.
 			if (userName.equals(blackPlayer)) {
 				myPlayerCode = BLACK_QUEEN;
-				this.turn_tracker =0;
 			} else if (userName.equals(whitePlayer)) {
-				this.turn_tracker =1;
 				myPlayerCode = WHITE_QUEEN;
 			}
+
+			this.turn_tracker=1;
+			this.moveTree = new ArtificialMoveTree(this);
+
 
             System.out.println("\n\nGame started.");
             System.out.println("Room users at start: Black=" + blackPlayer + ", White=" + whitePlayer);
             System.out.println("Current login user: " + userName+"\n\n");
-			this.moveTree = new ArtificialMoveTree(this);
+			if(this.sendNextMoveIfTurn()){
+				System.out.println("Made first move.");
+			}
 		}
 		if (messageType.equals(GameMessage.GAME_STATE_PLAYER_LOST)) {
 			
@@ -148,10 +158,12 @@ public class ArtificialPlayer extends GamePlayer{
 			ArrayList<Integer> arrow = (ArrayList<Integer>) msgDetails.get(AmazonsGameMessage.ARROW_POS);
 			// Keep local board state in sync for any subsequent AI calculation.
 			this.heuristicEvaluator.applyMove(this.gameBoard, from, to, arrow);
-			this.moveTree.progressMove();
-			// Let GUI apply the same update for visualization.
 			this.getGameGUI().updateGameState(msgDetails);
+			// Let GUI apply the same update for visualization.
 			this.turn_tracker++;
+			this.moveTree.progressMove();
+			this.sendNextMoveIfTurn();
+
 		}
     	return true;
     }
@@ -161,6 +173,36 @@ public class ArtificialPlayer extends GamePlayer{
 	//realistically should be called at the start of this player's turn
 	public ArrayList<ArrayList<Integer>> getNextMove(){
 		return this.moveTree.getNextMove();
+	}
+
+	public boolean sendNextMoveIfTurn() {
+		if(this.turn_tracker%2 + 1==this.myPlayerCode){
+			try {
+				Thread.sleep(1000);
+			} catch (InterruptedException e) {
+				throw new RuntimeException(e);
+			}
+			System.out.println("Sending move...");
+			ArrayList<ArrayList<Integer>> moves = this.getNextMove();
+			this.heuristicEvaluator.applyMove(this.gameBoard, moves.get(0),moves.get(1),moves.get(2));
+			this.gameClient.sendMoveMessage(moves.get(0),moves.get(1),moves.get(2));
+			this.updateMove(moves.get(0),moves.get(1),moves.get(2));
+			this.turn_tracker++;
+			this.moveTree.progressMove();
+			return true;
+		}
+
+		return false;
+	}
+
+	public void updateMove(ArrayList<Integer> queenPosCurrent, ArrayList<Integer> queenPosNew, ArrayList<Integer> arrowPos) {
+		Map<String, Object> data = new HashMap<>();
+		data.put(AmazonsGameMessage.QUEEN_POS_CURR, queenPosCurrent);
+		data.put(AmazonsGameMessage.QUEEN_POS_NEXT, queenPosNew);
+		data.put(AmazonsGameMessage.ARROW_POS, arrowPos);
+		this.gamegui.updateGameState(data);
+
+
 	}
     
     @Override

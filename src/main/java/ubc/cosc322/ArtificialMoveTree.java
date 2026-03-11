@@ -10,28 +10,17 @@ import static java.util.Arrays.asList;
 
 public class ArtificialMoveTree {
     ArtificialPlayer player;
-    int max_depth = 10;
 
-    ArrayList<MoveNode> parents = new ArrayList<>(); //this stores the parents of the leaf nodes to make minimax sorting easier
+    ArrayList<MoveNode> parents; //this stores the parents of the leaf nodes to make minimax sorting easier
     MoveNode current;
     public ArtificialMoveTree(ArtificialPlayer player){
+        parents = new ArrayList<>();
         System.out.println("Move tree initialized.");
         this.player=player;
-        current = new MoveNode(null,this.player,null,0);
-        this.expandDepth(current,0);
-    }
-
-    public void expandDepth(MoveNode root, int count){
-        if(count==this.max_depth){
-            return;
-        }
-        root.generateChildrenInitial();
-        if(count==this.max_depth-1){
-            this.parents.add(root);
-        }
-        for(MoveNode child: root.children){
-            this.expandDepth(child, count+1);
-        }
+        current = new MoveNode(null,this.player,null);
+        parents.add(current);
+        this.current.generateChildren();
+        System.out.println("Current parent nodes:" + this.parents.size());
     }
 
     //gets the best immediate next move based on depth search
@@ -39,77 +28,39 @@ public class ArtificialMoveTree {
     MoveNode getNextMoveNode(){
         //we take advantage of pqueue sorting to simply peek the best values of the minimax tree and take them
 
-        PriorityQueue<MoveNode> parent_comp=new PriorityQueue<>();
-        if(this.is_max()){
-            parent_comp=new PriorityQueue<>(Collections.reverseOrder());
-        }
+        PriorityQueue<MoveNode> parent_comp=new PriorityQueue<>(Collections.reverseOrder());
 
-        for(MoveNode m: this.parents){
-            if(!m.children.isEmpty()){
-                parent_comp.add(m.children.peek());
+            if(!this.current.children.isEmpty()){
+                parent_comp.add(this.current.children.peek());
             }else{
-                parent_comp.add(m);
+                parent_comp.add(this.current);
             }
-        }
-        return this.findImmediateNode(parent_comp.peek());
+
+        return parent_comp.peek();
     }
     ArrayList<ArrayList<Integer>> getNextMove(){
         return this.getNextMoveNode().move;
     }
     boolean is_max(){ //determines if we need to take the max of the min children (true) or min of the max children (false)
-        return (player.turn_tracker+this.max_depth) % 2 != 0;
+        return true;
     }
     void progressMove(){
         //applies a move to traverse the tree
         //the children nodes need to be updated to the next max_depth
 
+
         //updates the current pointer node to be the actual game state
         for(MoveNode m: this.current.children){
             if(this.player.gameBoard.equals(m.gameState)){
+                System.out.println("Progressed move to updated game state.");
                 this.current = m;
                 break;
             }
         }
 
-        this.pruneTree();
+        this.current.generateChildren();
 
-        ArrayList<MoveNode> new_parents = new ArrayList<>();
-        for(MoveNode m: this.parents){
-            for(MoveNode mn: m.children){
-                mn.generateChildren();
-                if(mn.children.isEmpty()){
-                    new_parents.add(mn.parent);
-                }else{
-                new_parents.add(mn);}
-            }
-        }
-        this.parents=new_parents;
-    }
-    void pruneTree(){
-        //cleans up the tree to avoid generating for dead nodes that cannot be achieved
-        ArrayList<MoveNode> new_parents = new ArrayList<>();
-        for(MoveNode m: this.parents){
-            if(findImmediateNode(m).parent.equals(this.current)){
-                new_parents.add(m);
-            }
-        }
-        this.parents=new_parents;
-    }
-
-    MoveNode findImmediateNode(MoveNode ideal_node){
-        //traverse up the ideal future game state's tree to find the immediate next move
-        if(ideal_node==null){
-            return null;
-        }
-        MoveNode next_node = ideal_node;
-        while(true){
-            ideal_node=ideal_node.parent;
-            if(ideal_node.equals(this.current)){
-                break;
-            }
-            next_node=next_node.parent;
-        }
-        return next_node;
+        System.out.println("Generated parents.");
     }
 }
 
@@ -118,14 +69,13 @@ class MoveNode implements Comparable<MoveNode>{
     ArrayList<Integer> gameState = new ArrayList<>();
     MoveNode parent;
     int value;
-    int max_depth;
     ArrayList<ArrayList<Integer>> move;
     HeuristicEvaluator eval;
     ArtificialPlayer player;
-    public MoveNode(MoveNode parent, ArtificialPlayer player, ArrayList<ArrayList<Integer>> associatedMove, int depth){
+    int turn_color;
+    public MoveNode(MoveNode parent, ArtificialPlayer player, ArrayList<ArrayList<Integer>> associatedMove){
         this.move=associatedMove;
         this.player=player;
-        this.max_depth = depth;
         this.eval = this.player.heuristicEvaluator;
         this.parent=parent;
 
@@ -143,12 +93,13 @@ class MoveNode implements Comparable<MoveNode>{
         this.gameState=new ArrayList<>(fake_board);
         this.value = player.heuristicEvaluator.evaluate(fake_board,player.myPlayerCode);
 
-        if((this.player.turn_tracker+this.max_depth) % 2 == 0){
+        if((this.player.turn_tracker) % 2 == this.player.myPlayerCode-1){
             children = new PriorityQueue<>(Collections.reverseOrder());
         }
     }
     public void generateChildren(){
-        int color = (this.player.turn_tracker+this.max_depth +1) % 2 + 1;
+        int color = (this.player.turn_tracker) % 2 + 1;
+        System.out.println("Generating for turn: " + this.player.turn_tracker);
         for(int i = 1; i<11; i++){
             for(int j = 1; j < 11; j++){
                 if(this.eval.getCell(this.gameState,i,j)==color){
@@ -162,31 +113,8 @@ class MoveNode implements Comparable<MoveNode>{
                         ArrayList<Integer> from = new ArrayList<>(asList(i,j));
 
                         for(ArrayList<Integer> arrow: arrows){
-                            MoveNode mn = new MoveNode(this,this.player, new ArrayList<>(asList(from, to, arrow)), max_depth);
-                            this.children.add(mn);
-                        }
-
-                    }
-                }
-            }
-        }
-    }
-    public void generateChildrenInitial(){
-        int color = (this.player.turn_tracker+this.max_depth +1) % 2 + 1;
-        for(int i = 1; i<11; i++){
-            for(int j = 1; j < 11; j++){
-                if(this.eval.getCell(this.gameState,i,j)==color){
-                    ArrayList<ArrayList<Integer>> moves = this.eval.generateValidMoves(this.gameState,new ArrayList<>(asList(i,j)));
-                    for(ArrayList<Integer> to: moves){
-
-                        ArrayList<Integer> fake_board = new ArrayList<>(this.gameState);
-                        this.eval.setCell(fake_board,i,j,0);
-                        ArrayList<ArrayList<Integer>> arrows = this.eval.generateValidMoves(fake_board,to);
-
-                        ArrayList<Integer> from = new ArrayList<>(asList(i,j));
-
-                        for(ArrayList<Integer> arrow: arrows){
-                            MoveNode mn = new MoveNode(this,this.player, new ArrayList<>(asList(from, to, arrow)), max_depth+1);
+                            MoveNode mn = new MoveNode(this,this.player, new ArrayList<>(asList(from, to, arrow)));
+                            mn.turn_color=color;
                             this.children.add(mn);
                         }
 
