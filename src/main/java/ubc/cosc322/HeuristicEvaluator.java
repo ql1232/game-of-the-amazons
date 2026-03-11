@@ -137,7 +137,7 @@ public class HeuristicEvaluator {
 
         int mobilityWeight = 2;
         int territoryWeight = 5;
-        return mobilityWeight * (mobilitySelf - mobilityOpp) + territoryWeight * territoryScore;
+        return -1 * (mobilityWeight * (mobilitySelf - mobilityOpp) + territoryWeight * territoryScore);
     }
 
     /**

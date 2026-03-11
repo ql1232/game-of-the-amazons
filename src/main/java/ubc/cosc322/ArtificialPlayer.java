@@ -32,7 +32,7 @@ public class ArtificialPlayer extends GamePlayer{
 
     private GameClient gameClient = null; 
     private BaseGameGUI gamegui = null;
-	public int turn_tracker = 1;
+	public int turn_tracker = 0;
 	private boolean gameEnded = false;
 
 	private static final int BOARD_DIM = 11;
@@ -126,7 +126,7 @@ public class ArtificialPlayer extends GamePlayer{
 			System.out.println("Game Board: " + gameS);
 			this.gameBoard = gameS;
 			this.gamegui.setGameState(gameS);
-			this.turn_tracker=1;
+			this.turn_tracker=0;
 		}
 		if (messageType.equals(GameMessage.GAME_ACTION_START)) {
             String blackPlayer = (String) msgDetails.get(AmazonsGameMessage.PLAYER_BLACK);
@@ -138,7 +138,7 @@ public class ArtificialPlayer extends GamePlayer{
 				myPlayerCode = WHITE_QUEEN;
 			}
 
-			this.turn_tracker=1;
+			this.turn_tracker=0;
 			this.gameEnded = false;
 			this.moveTree = new ArtificialMoveTree(this);
 
