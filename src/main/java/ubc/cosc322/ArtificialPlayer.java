@@ -163,19 +163,34 @@ public class ArtificialPlayer extends GamePlayer{
             System.out.println("\n\nGame started.");
             System.out.println("Room users at start: Black=" + blackPlayer + ", White=" + whitePlayer);
             System.out.println("Current login user: " + userName+"\n\n");
+            // GAME_ACTION_START may or may not include a game-state field.
+            // If it does, use it to refresh the local board and GUI; otherwise
+            // rely on the board already received via GAME_STATE_BOARD.
             ArrayList<Integer> gameState = (ArrayList<Integer>) msgDetails.get(AmazonsGameMessage.GAME_STATE);
-            if (gameState != null && this.getGameGUI() != null) {
-				// Save initial board state and draw it.
+            if (gameState != null) {
 				this.gameBoard = new ArrayList<>(gameState);
-                this.getGameGUI().setGameState(gameState);
-				this.moveTree = new ArtificialMoveTree(this);
-				// Black moves first; send our opening move immediately.
-				if (myPlayerCode == BLACK_QUEEN) {
-					ArrayList<ArrayList<Integer>> move = this.getNextMove();
-					if (move != null) {
-						gameClient.sendMoveMessage(move.get(0), move.get(1), move.get(2));
-					}
-				}
+				if (this.getGameGUI() != null) {
+                    this.getGameGUI().setGameState(gameState);
+                }
+            }
+            // Diagnostic: verify board has pieces before building its tree.
+            int bQueens = 0, wQueens = 0;
+            for (Integer cell : this.gameBoard) {
+                if (cell == BLACK_QUEEN) bQueens++;
+                else if (cell == WHITE_QUEEN) wQueens++;
+            }
+            System.out.println("[Debug] Board before tree build: black=" + bQueens + " white=" + wQueens);
+            // Build the search tree from whatever board state is current.
+            this.moveTree = new ArtificialMoveTree(this);
+            // Black moves first; send our opening move immediately.
+            if (myPlayerCode == BLACK_QUEEN) {
+                ArrayList<ArrayList<Integer>> move = this.getNextMove();
+                if (move != null) {
+                    System.out.println("[Move] Sending opening move: " + move);
+                    gameClient.sendMoveMessage(move.get(0), move.get(1), move.get(2));
+                } else {
+                    System.out.println("[ERROR] getNextMove() returned null on opening move.");
+                }
             }
 		}
 		if (messageType.equals(GameMessage.GAME_STATE_PLAYER_LOST)) {
@@ -199,7 +214,10 @@ public class ArtificialPlayer extends GamePlayer{
 			if (isOpponentMove) {
 				ArrayList<ArrayList<Integer>> move = this.getNextMove();
 				if (move != null) {
+					System.out.println("[Move] Sending response move: " + move);
 					gameClient.sendMoveMessage(move.get(0), move.get(1), move.get(2));
+				} else {
+					System.out.println("[ERROR] getNextMove() returned null on response move.");
 				}
 			}
 		}

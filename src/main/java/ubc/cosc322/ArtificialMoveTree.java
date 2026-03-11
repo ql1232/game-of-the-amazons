@@ -47,10 +47,24 @@ public class ArtificialMoveTree {
                 parent_comp.add(m);
             }
         }
+
+        // Fallback: if the full 3-ply tree could not be built (e.g. opponent
+        // pieces were absent from the initial board state), fall back to the
+        // best depth-1 child directly rather than returning null.
+        if (parent_comp.isEmpty()) {
+            System.out.println("[WARN] Minimax parents list is empty; falling back to depth-1 best child.");
+            return this.findImmediateNode(this.current.children.peek());
+        }
+
         return this.findImmediateNode(parent_comp.peek());
     }
     ArrayList<ArrayList<Integer>> getNextMove(){
-        return this.getNextMoveNode().move;
+        MoveNode node = this.getNextMoveNode();
+        if (node == null) {
+            System.out.println("[ERROR] getNextMoveNode() returned null — no legal moves found.");
+            return null;
+        }
+        return node.move;
     }
     boolean is_max(){ //determines if we need to take the max of the min children (true) or min of the max children (false)
         return (player.turn_tracker+this.max_depth) % 2 != 0;
