@@ -108,6 +108,29 @@ public class ArtificialPlayer extends GamePlayer{
 		}
 	}
 
+    /**
+     * Detects and caches our player color from a message that contains
+     * PLAYER_BLACK / PLAYER_WHITE fields (e.g. GAME_STATE_JOIN, GAME_ACTION_START).
+     * Logs the result so it is visible in the console.
+     *
+     * @param blackPlayer username assigned to the black side
+     * @param whitePlayer username assigned to the white side
+     */
+    private void detectPlayerColor(String blackPlayer, String whitePlayer) {
+        if (userName.equals(blackPlayer)) {
+            myPlayerCode = BLACK_QUEEN;
+            this.turn_tracker = 1;
+            System.out.println("\n[Color] Playing as BLACK (1). Username=" + userName);
+        } else if (userName.equals(whitePlayer)) {
+            myPlayerCode = WHITE_QUEEN;
+            this.turn_tracker = 0;
+            System.out.println("\n[Color] Playing as WHITE (2). Username=" + userName);
+        } else {
+            System.out.println("[Color] Could not determine color. Black=" + blackPlayer
+                    + ", White=" + whitePlayer + ", Me=" + userName);
+        }
+    }
+
     @Override
     public boolean handleGameMessage(String messageType, Map<String, Object> msgDetails) {
 
@@ -116,6 +139,14 @@ public class ArtificialPlayer extends GamePlayer{
 	
     	//For a detailed description of the message types and format, 
     	//see the method GamePlayer.handleGameMessage() in the game-client-api document.
+		if (messageType.equals(GameMessage.GAME_STATE_JOIN)) {
+			// Triggered when a player enters a room; detect our color as early as possible.
+			String blackPlayer = (String) msgDetails.get(AmazonsGameMessage.PLAYER_BLACK);
+			String whitePlayer = (String) msgDetails.get(AmazonsGameMessage.PLAYER_WHITE);
+			if (blackPlayer != null || whitePlayer != null) {
+				detectPlayerColor(blackPlayer, whitePlayer);
+			}
+		}
 		if (messageType.equals(GameMessage.GAME_STATE_BOARD)){
 			// Full board snapshot from server; replace local copy.
 			ArrayList<Integer> boardState = (ArrayList<Integer>) msgDetails.get(AmazonsGameMessage.GAME_STATE);
@@ -127,14 +158,8 @@ public class ArtificialPlayer extends GamePlayer{
 		if (messageType.equals(GameMessage.GAME_ACTION_START)) {
             String blackPlayer = (String) msgDetails.get(AmazonsGameMessage.PLAYER_BLACK);
             String whitePlayer = (String) msgDetails.get(AmazonsGameMessage.PLAYER_WHITE);
-			// Detect our side once the game starts; used by heuristic perspective.
-			if (userName.equals(blackPlayer)) {
-				myPlayerCode = BLACK_QUEEN;
-				this.turn_tracker =1;
-			} else if (userName.equals(whitePlayer)) {
-				this.turn_tracker =0;
-				myPlayerCode = WHITE_QUEEN;
-			}
+			// Confirm/update our side at game start (may already be set from GAME_STATE_JOIN).
+			detectPlayerColor(blackPlayer, whitePlayer);
             System.out.println("\n\nGame started.");
             System.out.println("Room users at start: Black=" + blackPlayer + ", White=" + whitePlayer);
             System.out.println("Current login user: " + userName+"\n\n");
