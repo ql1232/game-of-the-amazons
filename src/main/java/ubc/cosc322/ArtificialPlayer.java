@@ -109,6 +109,22 @@ public class ArtificialPlayer extends GamePlayer{
 	}
 
     /**
+     * Sends a move to the server and immediately applies it to the local board.
+     *
+     * The server does NOT echo the sender's own moves back, so without this
+     * local update the board would never reflect our queens' new positions and
+     * the AI would keep generating moves from already-vacated squares.
+     *
+     * @param move list of [from, to, arrow] coordinate pairs
+     */
+    private void sendMove(ArrayList<ArrayList<Integer>> move) {
+        // Apply to local board FIRST so subsequent tree rebuilds see the new state.
+        heuristicEvaluator.applyMove(this.gameBoard, move.get(0), move.get(1), move.get(2));
+        System.out.println("[Move] Sending: " + move);
+        gameClient.sendMoveMessage(move.get(0), move.get(1), move.get(2));
+    }
+
+    /**
      * Detects and caches our player color from a message that contains
      * PLAYER_BLACK / PLAYER_WHITE fields (e.g. GAME_STATE_JOIN, GAME_ACTION_START).
      * Logs the result so it is visible in the console.
@@ -186,8 +202,7 @@ public class ArtificialPlayer extends GamePlayer{
             if (myPlayerCode == BLACK_QUEEN) {
                 ArrayList<ArrayList<Integer>> move = this.getNextMove();
                 if (move != null) {
-                    System.out.println("[Move] Sending opening move: " + move);
-                    gameClient.sendMoveMessage(move.get(0), move.get(1), move.get(2));
+                    sendMove(move);
                 } else {
                     System.out.println("[ERROR] getNextMove() returned null on opening move.");
                 }
@@ -216,8 +231,7 @@ public class ArtificialPlayer extends GamePlayer{
 			if (isOpponentMove) {
 				ArrayList<ArrayList<Integer>> move = this.getNextMove();
 				if (move != null) {
-					System.out.println("[Move] Sending response move: " + move);
-					gameClient.sendMoveMessage(move.get(0), move.get(1), move.get(2));
+					sendMove(move);
 				} else {
 					System.out.println("[ERROR] getNextMove() returned null on response move.");
 				}
