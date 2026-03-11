@@ -33,8 +33,6 @@ public class ArtificialMoveTree {
     //gets the best immediate next move based on depth search
     //returns an arraylist of arraylists containing the 3 arraylists corresponding to move syntax
     MoveNode getNextMoveNode(){
-        //we take advantage of pqueue sorting to simply peek the best values of the minimax tree and take them
-
         PriorityQueue<MoveNode> parent_comp=new PriorityQueue<>();
         if(this.is_max()){
             parent_comp=new PriorityQueue<>(Collections.reverseOrder());
@@ -43,20 +41,61 @@ public class ArtificialMoveTree {
         for(MoveNode m: this.parents){
             if(!m.children.isEmpty()){
                 parent_comp.add(m.children.peek());
-            }else{
+            } else if (m.move != null) {
                 parent_comp.add(m);
             }
         }
 
-        // Fallback: if the full 3-ply tree could not be built (e.g. opponent
-        // pieces were absent from the initial board state), fall back to the
-        // best depth-1 child directly rather than returning null.
         if (parent_comp.isEmpty()) {
             System.out.println("[WARN] Minimax parents list is empty; falling back to depth-1 best child.");
-            return this.findImmediateNode(this.current.children.peek());
+            return findNonReversal(this.current.children);
         }
 
-        return this.findImmediateNode(parent_comp.peek());
+        // Prefer the best-scoring move; fall back to next-best if it would
+        // exactly undo the last move we played (avoids infinite oscillation).
+        MoveNode best = findImmediateNode(parent_comp.peek());
+        if (!isReversal(best)) {
+            return best;
+        }
+        // Best is a reversal: scan all children of every parent for an alternative.
+        for (MoveNode p : this.parents) {
+            // Copy preserves the PQ's comparator (MAX or MIN ordering).
+            PriorityQueue<MoveNode> childCopy = new PriorityQueue<>(p.children);
+            while (!childCopy.isEmpty()) {
+                MoveNode candidate = findImmediateNode(childCopy.poll());
+                if (candidate != null && !isReversal(candidate)) return candidate;
+            }
+        }
+        return best; // Every option is a reversal; accept and move anyway.
+    }
+
+    /**
+     * Returns true when playing {@code node} would move a queen back to where
+     * it came from on the previous turn (per-queen history).
+     *
+     * Tracks each queen independently, so interleaved moves by different queens
+     * are correctly handled (e.g. queen A oscillates even when queen B moved
+     * in between the two A-moves).
+     */
+    private boolean isReversal(MoveNode node) {
+        if (node == null || node.move == null) return false;
+        ArrayList<Integer> from = node.move.get(0);
+        ArrayList<Integer> to   = node.move.get(1);
+        // Look up where the queen currently at `to` came from on our last move.
+        ArrayList<Integer> prevPos = player.queenPrevPos.get(to.toString());
+        return prevPos != null && prevPos.equals(from);
+    }
+
+    /** Scans a PQ (copied, not mutated) for the best-scoring non-reversal node. */
+    private MoveNode findNonReversal(PriorityQueue<MoveNode> source) {
+        if (source == null || source.isEmpty()) return null;
+        PriorityQueue<MoveNode> copy = new PriorityQueue<>(source);
+        MoveNode fallback = copy.peek();
+        while (!copy.isEmpty()) {
+            MoveNode candidate = copy.poll();
+            if (!isReversal(candidate)) return candidate;
+        }
+        return fallback; // All were reversals; return best anyway.
     }
     ArrayList<ArrayList<Integer>> getNextMove(){
         MoveNode node = this.getNextMoveNode();
@@ -116,6 +155,10 @@ public class ArtificialMoveTree {
         MoveNode next_node = ideal_node;
         while(true){
             ideal_node=ideal_node.parent;
+            if(ideal_node == null){
+                // Traversed past root without finding current; broken tree state.
+                return null;
+            }
             if(ideal_node.equals(this.current)){
                 break;
             }

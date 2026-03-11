@@ -1,6 +1,7 @@
 package ubc.cosc322;
 
 import java.util.*;
+import java.util.HashMap;
 
 import ygraph.ai.smartfox.games.BaseGameGUI;
 import ygraph.ai.smartfox.games.GameClient;
@@ -48,6 +49,9 @@ public class ArtificialPlayer extends GamePlayer{
 	int myPlayerCode = BLACK_QUEEN;
 
 	public ArtificialMoveTree moveTree;
+	// Maps each queen's current position ("[r, c]") to where it came from.
+	// Used by ArtificialMoveTree to avoid per-queen reversal moves.
+	HashMap<String, ArrayList<Integer>> queenPrevPos = new HashMap<>();
 	
     /**
      * Program entry.
@@ -118,8 +122,15 @@ public class ArtificialPlayer extends GamePlayer{
      * @param move list of [from, to, arrow] coordinate pairs
      */
     private void sendMove(ArrayList<ArrayList<Integer>> move) {
-        // Apply to local board FIRST so subsequent tree rebuilds see the new state.
-        heuristicEvaluator.applyMove(this.gameBoard, move.get(0), move.get(1), move.get(2));
+        ArrayList<Integer> from = move.get(0);
+        ArrayList<Integer> to   = move.get(1);
+        heuristicEvaluator.applyMove(this.gameBoard, from, to, move.get(2));
+        // Update per-queen position history for reversal detection.
+        queenPrevPos.remove(from.toString());
+        queenPrevPos.put(to.toString(), new ArrayList<>(from));
+        if (this.getGameGUI() != null) {
+            this.getGameGUI().setGameState(new ArrayList<>(this.gameBoard));
+        }
         System.out.println("[Move] Sending: " + move);
         gameClient.sendMoveMessage(move.get(0), move.get(1), move.get(2));
     }
@@ -196,6 +207,8 @@ public class ArtificialPlayer extends GamePlayer{
                 else if (cell == WHITE_QUEEN) wQueens++;
             }
             System.out.println("[Debug] Board before tree build: black=" + bQueens + " white=" + wQueens);
+            // Reset per-queen position history for the new game.
+            queenPrevPos.clear();
             // Build the search tree from whatever board state is current.
             this.moveTree = new ArtificialMoveTree(this);
             // Black moves first; send our opening move immediately.
@@ -216,25 +229,40 @@ public class ArtificialPlayer extends GamePlayer{
 			ArrayList<Integer> from = (ArrayList<Integer>) msgDetails.get(AmazonsGameMessage.QUEEN_POS_CURR);
 			ArrayList<Integer> to = (ArrayList<Integer>) msgDetails.get(AmazonsGameMessage.QUEEN_POS_NEXT);
 			ArrayList<Integer> arrow = (ArrayList<Integer>) msgDetails.get(AmazonsGameMessage.ARROW_POS);
-			// Determine if this is the opponent's move before mutating the board.
-			boolean isOpponentMove = (from != null && from.size() >= 2
-					&& heuristicEvaluator.getCell(this.gameBoard, from.get(0), from.get(1)) != myPlayerCode);
-			// Keep local board state in sync for any subsequent AI calculation.
+
+			// Guard against malformed messages.
+			if (from == null || from.size() < 2 || to == null || arrow == null) {
+				return true;
+			}
+
+			// The server echoes our own moves back to us. We already applied our move
+			// via sendMove(), so the 'from' square is now EMPTY on our local board.
+			// If 'from' does NOT contain the opponent's queen, this is our echo — skip it.
+			int oppCode = (myPlayerCode == BLACK_QUEEN) ? WHITE_QUEEN : BLACK_QUEEN;
+			if (heuristicEvaluator.getCell(this.gameBoard, from.get(0), from.get(1)) != oppCode) {
+				return true;
+			}
+
+			// Opponent's move: apply to our authoritative gameBoard, then
+			// refresh the GUI from the updated board (using a copy to avoid
+			// aliasing — if GUI holds the same ArrayList and updateGameState
+			// mutates it, our gameBoard would be corrupted a second time).
 			this.heuristicEvaluator.applyMove(this.gameBoard, from, to, arrow);
-			// Let GUI apply the same update for visualization.
-			this.getGameGUI().updateGameState(msgDetails);
+			this.getGameGUI().setGameState(new ArrayList<>(this.gameBoard));
 			// Increment BEFORE rebuilding so the tree generates the correct side's moves.
 			this.turn_tracker++;
+			// Diagnostic: confirm our queens are still on the board.
+			int myQueens = 0;
+			for (Integer cell : this.gameBoard) { if (cell == myPlayerCode) myQueens++; }
+			System.out.println("[Debug] After opponent move, my queens on board: " + myQueens);
 			// Rebuild search tree from the updated board state.
 			this.moveTree = new ArtificialMoveTree(this);
-			// After the opponent moves it is our turn — compute and send our response.
-			if (isOpponentMove) {
-				ArrayList<ArrayList<Integer>> move = this.getNextMove();
-				if (move != null) {
-					sendMove(move);
-				} else {
-					System.out.println("[ERROR] getNextMove() returned null on response move.");
-				}
+			// Compute and send our response.
+			ArrayList<ArrayList<Integer>> move = this.getNextMove();
+			if (move != null) {
+				sendMove(move);
+			} else {
+				System.out.println("[ERROR] getNextMove() returned null — no legal moves available.");
 			}
 		}
     	return true;
