@@ -127,9 +127,9 @@ public class ArtificialPlayer extends GamePlayer{
 			// Detect our side once the game starts; used by heuristic perspective.
 			if (userName.equals(blackPlayer)) {
 				myPlayerCode = BLACK_QUEEN;
-				this.turn_tracker =1;
-			} else if (userName.equals(whitePlayer)) {
 				this.turn_tracker =0;
+			} else if (userName.equals(whitePlayer)) {
+				this.turn_tracker =1;
 				myPlayerCode = WHITE_QUEEN;
 			}
 
