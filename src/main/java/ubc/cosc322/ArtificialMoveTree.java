@@ -1,16 +1,13 @@
 package ubc.cosc322;
 
-import java.lang.reflect.Array;
 import java.util.ArrayList;
+import static java.util.Arrays.asList;
 import java.util.Collections;
 import java.util.PriorityQueue;
 
-import static java.lang.Integer.valueOf;
-import static java.util.Arrays.asList;
-
 public class ArtificialMoveTree {
     ArtificialPlayer player;
-    int max_depth = 10;
+    int max_depth = 1;
 
     ArrayList<MoveNode> parents = new ArrayList<>(); //this stores the parents of the leaf nodes to make minimax sorting easier
     MoveNode current;

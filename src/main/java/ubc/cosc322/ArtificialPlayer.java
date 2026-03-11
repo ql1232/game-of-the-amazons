@@ -1,6 +1,7 @@
 package ubc.cosc322;
 
 import java.util.*;
+import java.util.Arrays;
 
 import ygraph.ai.smartfox.games.BaseGameGUI;
 import ygraph.ai.smartfox.games.GameClient;
@@ -138,13 +139,21 @@ public class ArtificialPlayer extends GamePlayer{
             System.out.println("\n\nGame started.");
             System.out.println("Room users at start: Black=" + blackPlayer + ", White=" + whitePlayer);
             System.out.println("Current login user: " + userName+"\n\n");
+            // GAME_ACTION_START may or may not carry a game-state payload.
+            // If it does, sync our board; otherwise use the board already set by GAME_STATE_BOARD.
             ArrayList<Integer> gameState = (ArrayList<Integer>) msgDetails.get(AmazonsGameMessage.GAME_STATE);
-            if (gameState != null && this.getGameGUI() != null) {
-				// Save initial board state and draw it.
+            if (gameState != null) {
 				this.gameBoard = new ArrayList<>(gameState);
-                this.getGameGUI().setGameState(gameState);
-				this.moveTree = new ArtificialMoveTree(this);
+				if (this.getGameGUI() != null) {
+					this.getGameGUI().setGameState(gameState);
+				}
             }
+			// Build the move tree in the background; it is NOT needed to send moves.
+			new Thread(() -> this.moveTree = new ArtificialMoveTree(this), "MoveTree-Init").start();
+			// Black moves first — start computing immediately without waiting for the tree.
+			if (myPlayerCode == BLACK_QUEEN) {
+				new Thread(this::sendMyMove, "AI-Move-0").start();
+			}
 		}
 		if (messageType.equals(GameMessage.GAME_STATE_PLAYER_LOST)) {
 			
@@ -154,12 +163,20 @@ public class ArtificialPlayer extends GamePlayer{
 			ArrayList<Integer> from = (ArrayList<Integer>) msgDetails.get(AmazonsGameMessage.QUEEN_POS_CURR);
 			ArrayList<Integer> to = (ArrayList<Integer>) msgDetails.get(AmazonsGameMessage.QUEEN_POS_NEXT);
 			ArrayList<Integer> arrow = (ArrayList<Integer>) msgDetails.get(AmazonsGameMessage.ARROW_POS);
+			// Identify whose move this is before mutating the board.
+			boolean isOpponentMove = (this.heuristicEvaluator.getCell(this.gameBoard, from.get(0), from.get(1)) != myPlayerCode);
 			// Keep local board state in sync for any subsequent AI calculation.
 			this.heuristicEvaluator.applyMove(this.gameBoard, from, to, arrow);
-			this.moveTree.progressMove();
+			if (this.moveTree != null) {
+				try { this.moveTree.progressMove(); } catch (Exception ignored) {}
+			}
 			// Let GUI apply the same update for visualization.
 			this.getGameGUI().updateGameState(msgDetails);
 			this.turn_tracker++;
+			// If the opponent just moved, send our response on a background thread.
+			if (isOpponentMove) {
+				new Thread(this::sendMyMove, "AI-Move").start();
+			}
 		}
     	return true;
     }
@@ -169,6 +186,64 @@ public class ArtificialPlayer extends GamePlayer{
 	//realistically should be called at the start of this player's turn
 	public ArrayList<ArrayList<Integer>> getNextMove(){
 		return this.moveTree.getNextMove();
+	}
+
+	/**
+	 * Computes the best greedy move (depth-1) and sends it to the game server.
+	 * Does not depend on ArtificialMoveTree, so it is safe to call immediately after
+	 * game start without waiting for the tree to be built.
+	 */
+	private void sendMyMove() {
+		try {
+			if (this.gameClient == null) return;
+			ArrayList<ArrayList<Integer>> move = computeBestMove();
+			if (move == null || move.size() < 3) {
+				System.err.println("[AI] No valid move found.");
+				return;
+			}
+			this.gameClient.sendMoveMessage(move.get(0), move.get(1), move.get(2));
+		} catch (Exception e) {
+			System.err.println("[AI] Failed to send move: " + e.getMessage());
+		}
+	}
+
+	/**
+	 * Depth-1 greedy search: enumerate all legal moves for our color and return
+	 * the one that maximises HeuristicEvaluator.evaluate() after the move.
+	 *
+	 * Board copy is made at entry so the real board is never modified.
+	 */
+	private ArrayList<ArrayList<Integer>> computeBestMove() {
+		ArrayList<ArrayList<Integer>> bestMove = null;
+		int bestScore = Integer.MIN_VALUE;
+		ArrayList<Integer> board = new ArrayList<>(this.gameBoard);
+
+		for (int i = 1; i <= 10; i++) {
+			for (int j = 1; j <= 10; j++) {
+				if (heuristicEvaluator.getCell(board, i, j) != myPlayerCode) continue;
+				ArrayList<Integer> from = new ArrayList<>(Arrays.asList(i, j));
+				for (ArrayList<Integer> to : heuristicEvaluator.generateValidMoves(board, from)) {
+					// Temporarily clear queen's source so arrows can pass through it.
+					ArrayList<Integer> boardQ = new ArrayList<>(board);
+					heuristicEvaluator.setCell(boardQ, i, j, 0);
+					for (ArrayList<Integer> arrow : heuristicEvaluator.generateValidMoves(boardQ, to)) {
+						ArrayList<Integer> finalBoard = new ArrayList<>(boardQ);
+						heuristicEvaluator.setCell(finalBoard, to.get(0), to.get(1), myPlayerCode);
+						heuristicEvaluator.setCell(finalBoard, arrow.get(0), arrow.get(1), 3);
+						int score = heuristicEvaluator.evaluate(finalBoard, myPlayerCode);
+						if (score > bestScore) {
+							bestScore = score;
+							bestMove = new ArrayList<>(Arrays.asList(
+								new ArrayList<>(from),
+								new ArrayList<>(to),
+								new ArrayList<>(arrow)
+							));
+						}
+					}
+				}
+			}
+		}
+		return bestMove;
 	}
     
     @Override
