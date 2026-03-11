@@ -117,12 +117,9 @@ public class ArtificialPlayer extends GamePlayer{
     	//For a detailed description of the message types and format, 
     	//see the method GamePlayer.handleGameMessage() in the game-client-api document.
 		if (messageType.equals(GameMessage.GAME_STATE_BOARD)){
-			// Full board snapshot from server; replace local copy.
-			ArrayList<Integer> boardState = (ArrayList<Integer>) msgDetails.get(AmazonsGameMessage.GAME_STATE);
-			if (boardState != null) {
-				this.gameBoard = new ArrayList<>(boardState);
-				this.getGameGUI().setGameState(boardState);
-			}
+			ArrayList<Integer> gameS = (ArrayList)msgDetails.get("game-state");
+			System.out.println("Game Board: " + gameS);
+			this.gamegui.setGameState(gameS);
 		}
 		if (messageType.equals(GameMessage.GAME_ACTION_START)) {
             String blackPlayer = (String) msgDetails.get(AmazonsGameMessage.PLAYER_BLACK);
@@ -140,12 +137,6 @@ public class ArtificialPlayer extends GamePlayer{
             System.out.println("Room users at start: Black=" + blackPlayer + ", White=" + whitePlayer);
             System.out.println("Current login user: " + userName+"\n\n");
 			this.moveTree = new ArtificialMoveTree(this);
-            ArrayList<Integer> gameState = (ArrayList<Integer>) msgDetails.get(AmazonsGameMessage.GAME_STATE);
-            if (gameState != null && this.getGameGUI() != null) {
-				// Save initial board state and draw it.
-				this.gameBoard = new ArrayList<>(gameState);
-                this.getGameGUI().setGameState(gameState);
-            }
 		}
 		if (messageType.equals(GameMessage.GAME_STATE_PLAYER_LOST)) {
 			
