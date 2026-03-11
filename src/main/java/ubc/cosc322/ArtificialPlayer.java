@@ -135,15 +135,16 @@ public class ArtificialPlayer extends GamePlayer{
 				this.turn_tracker =0;
 				myPlayerCode = WHITE_QUEEN;
 			}
+
             System.out.println("\n\nGame started.");
             System.out.println("Room users at start: Black=" + blackPlayer + ", White=" + whitePlayer);
             System.out.println("Current login user: " + userName+"\n\n");
+			this.moveTree = new ArtificialMoveTree(this);
             ArrayList<Integer> gameState = (ArrayList<Integer>) msgDetails.get(AmazonsGameMessage.GAME_STATE);
             if (gameState != null && this.getGameGUI() != null) {
 				// Save initial board state and draw it.
 				this.gameBoard = new ArrayList<>(gameState);
                 this.getGameGUI().setGameState(gameState);
-				this.moveTree = new ArtificialMoveTree(this);
             }
 		}
 		if (messageType.equals(GameMessage.GAME_STATE_PLAYER_LOST)) {

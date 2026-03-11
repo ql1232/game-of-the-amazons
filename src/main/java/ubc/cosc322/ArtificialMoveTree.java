@@ -15,6 +15,7 @@ public class ArtificialMoveTree {
     ArrayList<MoveNode> parents = new ArrayList<>(); //this stores the parents of the leaf nodes to make minimax sorting easier
     MoveNode current;
     public ArtificialMoveTree(ArtificialPlayer player){
+        System.out.println("Move tree initialized.");
         this.player=player;
         current = new MoveNode(null,this.player,null,0);
         this.expandDepth(current,0);
