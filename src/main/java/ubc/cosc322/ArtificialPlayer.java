@@ -136,6 +136,7 @@ public class ArtificialPlayer extends GamePlayer{
 				this.turn_tracker =0;
 				myPlayerCode = WHITE_QUEEN;
 			}
+			System.out.println("[AI] Role assigned: " + (myPlayerCode == BLACK_QUEEN ? "BLACK" : "WHITE") + " (" + userName + ")");
             System.out.println("\n\nGame started.");
             System.out.println("Room users at start: Black=" + blackPlayer + ", White=" + whitePlayer);
             System.out.println("Current login user: " + userName+"\n\n");
@@ -150,9 +151,10 @@ public class ArtificialPlayer extends GamePlayer{
             }
 			// Build the move tree in the background; it is NOT needed to send moves.
 			new Thread(() -> this.moveTree = new ArtificialMoveTree(this), "MoveTree-Init").start();
-			// Black moves first — start computing immediately without waiting for the tree.
+			// Black moves first — snapshot the board now (on the message thread) and pass it to the AI thread.
 			if (myPlayerCode == BLACK_QUEEN) {
-				new Thread(this::sendMyMove, "AI-Move-0").start();
+				final ArrayList<Integer> snapshot = new ArrayList<>(this.gameBoard);
+				new Thread(() -> sendMyMove(snapshot), "AI-Move-0").start();
 			}
 		}
 		if (messageType.equals(GameMessage.GAME_STATE_PLAYER_LOST)) {
@@ -164,7 +166,8 @@ public class ArtificialPlayer extends GamePlayer{
 			ArrayList<Integer> to = (ArrayList<Integer>) msgDetails.get(AmazonsGameMessage.QUEEN_POS_NEXT);
 			ArrayList<Integer> arrow = (ArrayList<Integer>) msgDetails.get(AmazonsGameMessage.ARROW_POS);
 			// Identify whose move this is before mutating the board.
-			boolean isOpponentMove = (this.heuristicEvaluator.getCell(this.gameBoard, from.get(0), from.get(1)) != myPlayerCode);
+			int pieceAtFrom = this.heuristicEvaluator.getCell(this.gameBoard, from.get(0), from.get(1));
+			boolean isOpponentMove = (pieceAtFrom != myPlayerCode);
 			// Keep local board state in sync for any subsequent AI calculation.
 			this.heuristicEvaluator.applyMove(this.gameBoard, from, to, arrow);
 			if (this.moveTree != null) {
@@ -173,9 +176,12 @@ public class ArtificialPlayer extends GamePlayer{
 			// Let GUI apply the same update for visualization.
 			this.getGameGUI().updateGameState(msgDetails);
 			this.turn_tracker++;
-			// If the opponent just moved, send our response on a background thread.
+			// If the opponent just moved, take a board snapshot NOW (on the message thread, after applyMove)
+			// and pass it to the AI thread. This prevents race conditions: the AI thread must never
+			// read this.gameBoard directly because the message thread may modify it concurrently.
 			if (isOpponentMove) {
-				new Thread(this::sendMyMove, "AI-Move").start();
+				final ArrayList<Integer> snapshot = new ArrayList<>(this.gameBoard);
+				new Thread(() -> sendMyMove(snapshot), "AI-Move").start();
 			}
 		}
     	return true;
@@ -189,18 +195,18 @@ public class ArtificialPlayer extends GamePlayer{
 	}
 
 	/**
-	 * Computes the best greedy move (depth-1) and sends it to the game server.
-	 * Does not depend on ArtificialMoveTree, so it is safe to call immediately after
-	 * game start without waiting for the tree to be built.
+	 * Computes the best greedy move on the given board snapshot and sends it.
+	 * The snapshot must have been taken on the message-handler thread to avoid races.
 	 */
-	private void sendMyMove() {
+	private void sendMyMove(ArrayList<Integer> boardSnapshot) {
 		try {
 			if (this.gameClient == null) return;
-			ArrayList<ArrayList<Integer>> move = computeBestMove();
+			ArrayList<ArrayList<Integer>> move = computeBestMove(boardSnapshot);
 			if (move == null || move.size() < 3) {
 				System.err.println("[AI] No valid move found.");
 				return;
 			}
+			System.out.println("[AI] Sending: from=" + move.get(0) + " to=" + move.get(1) + " arrow=" + move.get(2));
 			this.gameClient.sendMoveMessage(move.get(0), move.get(1), move.get(2));
 		} catch (Exception e) {
 			System.err.println("[AI] Failed to send move: " + e.getMessage());
@@ -208,15 +214,12 @@ public class ArtificialPlayer extends GamePlayer{
 	}
 
 	/**
-	 * Depth-1 greedy search: enumerate all legal moves for our color and return
-	 * the one that maximises HeuristicEvaluator.evaluate() after the move.
-	 *
-	 * Board copy is made at entry so the real board is never modified.
+	 * Depth-1 greedy search on a pre-captured board snapshot.
+	 * Never touches this.gameBoard — the snapshot is the sole source of truth.
 	 */
-	private ArrayList<ArrayList<Integer>> computeBestMove() {
+	private ArrayList<ArrayList<Integer>> computeBestMove(ArrayList<Integer> board) {
 		ArrayList<ArrayList<Integer>> bestMove = null;
 		int bestScore = Integer.MIN_VALUE;
-		ArrayList<Integer> board = new ArrayList<>(this.gameBoard);
 
 		for (int i = 1; i <= 10; i++) {
 			for (int j = 1; j <= 10; j++) {
