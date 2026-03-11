@@ -1,12 +1,9 @@
 package ubc.cosc322;
 
-import java.lang.reflect.Array;
 import java.util.ArrayList;
+import static java.util.Arrays.asList;
 import java.util.Collections;
 import java.util.PriorityQueue;
-
-import static java.lang.Integer.valueOf;
-import static java.util.Arrays.asList;
 
 public class ArtificialMoveTree {
     ArtificialPlayer player;
@@ -39,8 +36,14 @@ public class ArtificialMoveTree {
         return parent_comp.peek();
     }
     ArrayList<ArrayList<Integer>> getNextMove(){
-        return this.getNextMoveNode().move;
+        MoveNode nextNode = this.getNextMoveNode();
+        return (nextNode != null) ? nextNode.move : null;
     }
+    
+    boolean hasValidMoves() {
+        return this.current != null && !this.current.children.isEmpty();
+    }
+    
     boolean is_max(){ //determines if we need to take the max of the min children (true) or min of the max children (false)
         return true;
     }

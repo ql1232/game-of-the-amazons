@@ -33,6 +33,7 @@ public class ArtificialPlayer extends GamePlayer{
     private GameClient gameClient = null; 
     private BaseGameGUI gamegui = null;
 	public int turn_tracker = 1;
+	private boolean gameEnded = false;
 
 	private static final int BOARD_DIM = 11;
 	private static final int BLACK_QUEEN = 1;
@@ -138,6 +139,7 @@ public class ArtificialPlayer extends GamePlayer{
 			}
 
 			this.turn_tracker=1;
+			this.gameEnded = false;
 			this.moveTree = new ArtificialMoveTree(this);
 
 
@@ -149,7 +151,28 @@ public class ArtificialPlayer extends GamePlayer{
 			}
 		}
 		if (messageType.equals(GameMessage.GAME_STATE_PLAYER_LOST)) {
+			gameEnded = true;
+			// Get information about the losing player (if included in the message)
+			Object loserObj = msgDetails.get("player-lost");
+			String loserName = null;
+			if (loserObj instanceof String) {
+				loserName = (String) loserObj;
+			}
 			
+			System.out.println("\n=========================================");
+			System.out.println("Game ended!");
+			
+			if (loserName != null) {
+				System.out.println("Player lost: " + loserName);
+				if (loserName.equals(userName)) {
+					System.out.println("You lost!");
+				} else {
+					System.out.println("You won!");
+				}
+			} else {
+				System.out.println("Game ended.");
+			}
+			System.out.println("=========================================\n");
 		}
 		if (messageType.equals(GameMessage.GAME_ACTION_MOVE)){
 			// Incremental move update: source, destination, and arrow position.
@@ -176,14 +199,41 @@ public class ArtificialPlayer extends GamePlayer{
 	}
 
 	public boolean sendNextMoveIfTurn() {
+		if (gameEnded) {
+			return false;
+		}
+		
 		if(this.turn_tracker%2 + 1==this.myPlayerCode){
 			try {
 				Thread.sleep(1000);
 			} catch (InterruptedException e) {
 				throw new RuntimeException(e);
 			}
+			
+			// Check if we have valid moves before trying to get one; if not, we lose by default.
+			if (!this.moveTree.hasValidMoves()) {
+				gameEnded = true;
+				System.out.println("\n=========================================");
+				System.out.println("Game ended!");
+				System.out.println("Player " + userName + " has no valid moves.");
+				System.out.println("You lost!");
+				System.out.println("=========================================\n");
+				return false;
+			}
+			
 			System.out.println("Sending move...");
 			ArrayList<ArrayList<Integer>> moves = this.getNextMove();
+			
+			if (moves == null) {
+				gameEnded = true;
+				System.out.println("\n=========================================");
+				System.out.println("Game ended!");
+				System.out.println("Unable to generate valid moves.");
+				System.out.println("You lost!");
+				System.out.println("=========================================\n");
+				return false;
+			}
+			
 			this.heuristicEvaluator.applyMove(this.gameBoard, moves.get(0),moves.get(1),moves.get(2));
 			this.gameClient.sendMoveMessage(moves.get(0),moves.get(1),moves.get(2));
 			this.updateMove(moves.get(0),moves.get(1),moves.get(2));
