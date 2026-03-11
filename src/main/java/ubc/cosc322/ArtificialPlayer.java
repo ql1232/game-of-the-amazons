@@ -206,10 +206,12 @@ public class ArtificialPlayer extends GamePlayer{
 					&& heuristicEvaluator.getCell(this.gameBoard, from.get(0), from.get(1)) != myPlayerCode);
 			// Keep local board state in sync for any subsequent AI calculation.
 			this.heuristicEvaluator.applyMove(this.gameBoard, from, to, arrow);
-			this.moveTree.progressMove();
 			// Let GUI apply the same update for visualization.
 			this.getGameGUI().updateGameState(msgDetails);
+			// Increment BEFORE rebuilding so the tree generates the correct side's moves.
 			this.turn_tracker++;
+			// Rebuild search tree from the updated board state.
+			this.moveTree = new ArtificialMoveTree(this);
 			// After the opponent moves it is our turn — compute and send our response.
 			if (isOpponentMove) {
 				ArrayList<ArrayList<Integer>> move = this.getNextMove();
