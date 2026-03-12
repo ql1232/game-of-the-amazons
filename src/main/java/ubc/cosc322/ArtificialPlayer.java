@@ -122,6 +122,7 @@ public class ArtificialPlayer extends GamePlayer{
     	//For a detailed description of the message types and format, 
     	//see the method GamePlayer.handleGameMessage() in the game-client-api document.
 		if (messageType.equals(GameMessage.GAME_STATE_BOARD)){
+			System.out.println("\nGAME STATE UPDATE RECEIVED");
 			ArrayList<Integer> gameS = (ArrayList)msgDetails.get("game-state");
 			System.out.println("Game Board: " + gameS);
 			this.gameBoard = gameS;
@@ -129,6 +130,7 @@ public class ArtificialPlayer extends GamePlayer{
 			this.turn_tracker=0;
 		}
 		if (messageType.equals(GameMessage.GAME_ACTION_START)) {
+			System.err.println("\nGAME START MESSAGE RECEIVED");
             String blackPlayer = (String) msgDetails.get(AmazonsGameMessage.PLAYER_BLACK);
             String whitePlayer = (String) msgDetails.get(AmazonsGameMessage.PLAYER_WHITE);
 			// Detect our side once the game starts; used by heuristic perspective.
@@ -151,6 +153,7 @@ public class ArtificialPlayer extends GamePlayer{
 			}
 		}
 		if (messageType.equals(GameMessage.GAME_STATE_PLAYER_LOST)) {
+			System.err.println("\nGAME END MESSAGE RECEIVED");
 			gameEnded = true;
 			// Get information about the losing player (if included in the message)
 			Object loserObj = msgDetails.get("player-lost");
@@ -175,6 +178,7 @@ public class ArtificialPlayer extends GamePlayer{
 			System.out.println("=========================================\n");
 		}
 		if (messageType.equals(GameMessage.GAME_ACTION_MOVE)){
+			System.out.println("MOVE MESSAGE RECEIVED");
 			// Incremental move update: source, destination, and arrow position.
 			ArrayList<Integer> from = (ArrayList<Integer>) msgDetails.get(AmazonsGameMessage.QUEEN_POS_CURR);
 			ArrayList<Integer> to = (ArrayList<Integer>) msgDetails.get(AmazonsGameMessage.QUEEN_POS_NEXT);
