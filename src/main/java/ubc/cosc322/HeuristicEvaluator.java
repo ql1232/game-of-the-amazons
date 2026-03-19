@@ -135,9 +135,24 @@ public class HeuristicEvaluator {
         int[] distOpp = computeQueenDistanceMap(boardState, otherCode);
         int territoryScore = computeTerritoryScore(distSelf, distOpp);
 
-        int mobilityWeight = 2;
-        int territoryWeight = 5;
-        return (mobilityWeight * (mobilitySelf - mobilityOpp) + territoryWeight * territoryScore);
+        // Adaptive weights based on game phase (arrows placed so far).
+        // Early game (< 20 arrows): mobility matters most — queens still roam freely.
+        // Mid game (20-49 arrows): balanced between mobility and territory.
+        // Late game (>= 50 arrows): territory is nearly decisive — board is fragmented.
+        int arrowCount = countArrows(boardState);
+        int mobilityWeight, territoryWeight;
+        if (arrowCount < 20) {
+            mobilityWeight = 4;
+            territoryWeight = 3;
+        } else if (arrowCount < 50) {
+            mobilityWeight = 3;
+            territoryWeight = 5;
+        } else {
+            mobilityWeight = 2;
+            territoryWeight = 8;
+        }
+
+        return mobilityWeight * (mobilitySelf - mobilityOpp) + territoryWeight * territoryScore;
     }
 
     /**
@@ -223,10 +238,13 @@ public class HeuristicEvaluator {
     /**
      * Converts two distance maps into a territory differential score.
      *
-     * For each board square:
-     * - +1 if only self can reach it, or self reaches it faster.
-     * - -1 if only opponent can reach it, or opponent reaches it faster.
-     * - 0 on ties / mutually unreachable squares.
+     * Scoring per square:
+     * - Exclusive territory (only one side can reach): ±3.
+     *   These squares are most valuable — the opponent can never contest them.
+     * - Contested territory (both sides can reach): clamped distance difference
+     *   in [-2, 2], where positive means self is closer.
+     *   Clamping prevents a single far-away square from dominating the total.
+     * - Mutually unreachable: 0.
      */
     private int computeTerritoryScore(int[] distSelf, int[] distOpp) {
         int score = 0;
@@ -236,17 +254,28 @@ public class HeuristicEvaluator {
                 boolean selfReach = distSelf[idx] != Integer.MAX_VALUE;
                 boolean oppReach = distOpp[idx] != Integer.MAX_VALUE;
                 if (selfReach && !oppReach) {
-                    score++;
+                    score += 3;
                 } else if (!selfReach && oppReach) {
-                    score--;
-                } else if (selfReach && distSelf[idx] < distOpp[idx]) {
-                    score++;
-                } else if (oppReach && distSelf[idx] > distOpp[idx]) {
-                    score--;
+                    score -= 3;
+                } else if (selfReach && oppReach) {
+                    // positive diff = self is closer; clamp outliers to [-2, 2]
+                    int diff = distOpp[idx] - distSelf[idx];
+                    score += Math.max(-2, Math.min(2, diff));
                 }
             }
         }
         return score;
+    }
+
+    /** Counts the number of arrow-blocked squares on the board. */
+    private int countArrows(ArrayList<Integer> boardState) {
+        int count = 0;
+        for (int r = BOARD_MIN; r <= BOARD_MAX; r++) {
+            for (int c = BOARD_MIN; c <= BOARD_MAX; c++) {
+                if (getCell(boardState, r, c) == ARROW) count++;
+            }
+        }
+        return count;
     }
 
     /**
