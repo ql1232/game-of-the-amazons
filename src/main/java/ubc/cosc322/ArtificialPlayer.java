@@ -38,6 +38,7 @@ public class ArtificialPlayer extends GamePlayer{
 	private static final int BOARD_DIM = 11;
 	private static final int BLACK_QUEEN = 1;
 	private static final int WHITE_QUEEN = 2;
+	private static final boolean USE_AGGRESSIVE_TRAP_HEURISTIC = false;
 	
     // Credentials used by GameClient.connect().
     private String userName = "cosc322";
@@ -90,7 +91,9 @@ public class ArtificialPlayer extends GamePlayer{
     public ArtificialPlayer(String userName, String passwd) {
     	this.userName = userName;
     	this.passwd = passwd;
-		this.heuristicEvaluator = new HeuristicEvaluator();
+		this.heuristicEvaluator = USE_AGGRESSIVE_TRAP_HEURISTIC
+				? new HeuristicEvaluator(HeuristicEvaluator.HeuristicConfig.aggressiveTrapConfig())
+				: new HeuristicEvaluator();
 
     	// Initialize a zero-filled board snapshot with framework-compatible size.
 		this.gameBoard=new ArrayList<>();
