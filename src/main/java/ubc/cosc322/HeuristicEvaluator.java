@@ -134,25 +134,31 @@ public class HeuristicEvaluator {
         int[] distSelf = computeQueenDistanceMap(boardState, playerCode);
         int[] distOpp = computeQueenDistanceMap(boardState, otherCode);
         int territoryScore = computeTerritoryScore(boardState, distSelf, distOpp);
+        int regionScore = computeRegionScore(boardState, distSelf, distOpp);
 
         // Adaptive weights based on game phase (arrows placed so far).
         // Early game (< 20 arrows): mobility matters most — queens still roam freely.
         // Mid game (20-49 arrows): balanced between mobility and territory.
         // Late game (>= 50 arrows): territory is nearly decisive — board is fragmented.
         int arrowCount = countArrows(boardState);
-        int mobilityWeight, territoryWeight;
+        int mobilityWeight, territoryWeight, regionWeight;
         if (arrowCount < 20) {
             mobilityWeight = 4;
             territoryWeight = 3;
+            regionWeight = 2;
         } else if (arrowCount < 50) {
             mobilityWeight = 3;
             territoryWeight = 5;
+            regionWeight = 4;
         } else {
             mobilityWeight = 2;
             territoryWeight = 8;
+            regionWeight = 7;
         }
 
-        return mobilityWeight * (mobilitySelf - mobilityOpp) + territoryWeight * territoryScore;
+        return mobilityWeight * (mobilitySelf - mobilityOpp)
+                + territoryWeight * territoryScore
+                + regionWeight * regionScore;
     }
 
     /**
@@ -270,6 +276,100 @@ public class HeuristicEvaluator {
         return score;
     }
 
+    /**
+     * Scores region ownership by decomposing empty squares into connected components.
+     *
+     * Region rules:
+     * - If only one side can reach a component, that side receives a bonus
+     *   proportional to component size.
+     * - If both can reach, prefer the side with shorter entry distance and better
+     *   per-cell proximity inside the component.
+     */
+    private int computeRegionScore(ArrayList<Integer> boardState, int[] distSelf, int[] distOpp) {
+        boolean[] visited = new boolean[BOARD_DIM * BOARD_DIM];
+        int score = 0;
+
+        for (int r = BOARD_MIN; r <= BOARD_MAX; r++) {
+            for (int c = BOARD_MIN; c <= BOARD_MAX; c++) {
+                if (getCell(boardState, r, c) != EMPTY) {
+                    continue;
+                }
+
+                int startIdx = toIndex(r, c);
+                if (visited[startIdx]) {
+                    continue;
+                }
+
+                int regionSize = 0;
+                int minSelfDist = Integer.MAX_VALUE;
+                int minOppDist = Integer.MAX_VALUE;
+                int selfCloserCells = 0;
+                int oppCloserCells = 0;
+                boolean selfReach = false;
+                boolean oppReach = false;
+
+                Deque<int[]> queue = new ArrayDeque<>();
+                queue.offer(new int[]{r, c});
+                visited[startIdx] = true;
+
+                while (!queue.isEmpty()) {
+                    int[] current = queue.poll();
+                    int row = current[0];
+                    int col = current[1];
+                    int idx = toIndex(row, col);
+                    regionSize++;
+
+                    int dSelf = distSelf[idx];
+                    int dOpp = distOpp[idx];
+                    boolean cellSelfReach = dSelf != Integer.MAX_VALUE;
+                    boolean cellOppReach = dOpp != Integer.MAX_VALUE;
+
+                    if (cellSelfReach) {
+                        selfReach = true;
+                        minSelfDist = Math.min(minSelfDist, dSelf);
+                    }
+                    if (cellOppReach) {
+                        oppReach = true;
+                        minOppDist = Math.min(minOppDist, dOpp);
+                    }
+                    if (cellSelfReach && cellOppReach) {
+                        if (dSelf < dOpp) {
+                            selfCloserCells++;
+                        } else if (dOpp < dSelf) {
+                            oppCloserCells++;
+                        }
+                    }
+
+                    for (int[] dir : DIRS) {
+                        int nr = row + dir[0];
+                        int nc = col + dir[1];
+                        if (!isInside(nr, nc) || getCell(boardState, nr, nc) != EMPTY) {
+                            continue;
+                        }
+                        int nIdx = toIndex(nr, nc);
+                        if (!visited[nIdx]) {
+                            visited[nIdx] = true;
+                            queue.offer(new int[]{nr, nc});
+                        }
+                    }
+                }
+
+                if (selfReach && !oppReach) {
+                    score += 2 * regionSize;
+                } else if (!selfReach && oppReach) {
+                    score -= 2 * regionSize;
+                } else if (selfReach && oppReach) {
+                    int entryAdvantage = clamp(minOppDist - minSelfDist, -2, 2);
+                    int entryWeight = Math.max(1, regionSize / 6);
+                    int localControl = selfCloserCells - oppCloserCells;
+                    score += entryAdvantage * entryWeight;
+                    score += localControl / 2;
+                }
+            }
+        }
+        return score;
+    }
+
     /** Counts the number of arrow-blocked squares on the board. */
     private int countArrows(ArrayList<Integer> boardState) {
         int count = 0;
@@ -300,6 +400,10 @@ public class HeuristicEvaluator {
      */
     private int toIndex(int row, int col) {
         return BOARD_DIM * row + col;
+    }
+
+    private int clamp(int value, int low, int high) {
+        return Math.max(low, Math.min(high, value));
     }
 
     /**
