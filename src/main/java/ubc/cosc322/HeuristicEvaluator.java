@@ -133,7 +133,7 @@ public class HeuristicEvaluator {
 
         int[] distSelf = computeQueenDistanceMap(boardState, playerCode);
         int[] distOpp = computeQueenDistanceMap(boardState, otherCode);
-        int territoryScore = computeTerritoryScore(distSelf, distOpp);
+        int territoryScore = computeTerritoryScore(boardState, distSelf, distOpp);
 
         // Adaptive weights based on game phase (arrows placed so far).
         // Early game (< 20 arrows): mobility matters most — queens still roam freely.
@@ -246,10 +246,13 @@ public class HeuristicEvaluator {
      *   Clamping prevents a single far-away square from dominating the total.
      * - Mutually unreachable: 0.
      */
-    private int computeTerritoryScore(int[] distSelf, int[] distOpp) {
+    private int computeTerritoryScore(ArrayList<Integer> boardState, int[] distSelf, int[] distOpp) {
         int score = 0;
         for (int r = BOARD_MIN; r <= BOARD_MAX; r++) {
             for (int c = BOARD_MIN; c <= BOARD_MAX; c++) {
+                if (getCell(boardState, r, c) != EMPTY) {
+                    continue;
+                }
                 int idx = toIndex(r, c);
                 boolean selfReach = distSelf[idx] != Integer.MAX_VALUE;
                 boolean oppReach = distOpp[idx] != Integer.MAX_VALUE;
