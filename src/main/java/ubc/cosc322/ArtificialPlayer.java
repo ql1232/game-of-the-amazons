@@ -2,6 +2,7 @@ package ubc.cosc322;
 
 import java.util.*;
 
+import com.smartfoxserver.v2.entities.data.SFSObject;
 import ygraph.ai.smartfox.games.BaseGameGUI;
 import ygraph.ai.smartfox.games.GameClient;
 import ygraph.ai.smartfox.games.GameMessage;
@@ -32,10 +33,12 @@ public class ArtificialPlayer extends GamePlayer{
     private GameClient gameClient = null; 
     private BaseGameGUI gamegui = null;
 	public int turn_tracker = 0;
+	private boolean gameEnded = false;
 
 	private static final int BOARD_DIM = 11;
 	private static final int BLACK_QUEEN = 1;
 	private static final int WHITE_QUEEN = 2;
+	private static final boolean USE_AGGRESSIVE_TRAP_HEURISTIC = false;
 	
     // Credentials used by GameClient.connect().
     private String userName = "cosc322";
@@ -88,7 +91,9 @@ public class ArtificialPlayer extends GamePlayer{
     public ArtificialPlayer(String userName, String passwd) {
     	this.userName = userName;
     	this.passwd = passwd;
-		this.heuristicEvaluator = new HeuristicEvaluator();
+		this.heuristicEvaluator = USE_AGGRESSIVE_TRAP_HEURISTIC
+				? new HeuristicEvaluator(HeuristicEvaluator.HeuristicConfig.aggressiveTrapConfig())
+				: new HeuristicEvaluator();
 
     	// Initialize a zero-filled board snapshot with framework-compatible size.
 		this.gameBoard=new ArrayList<>();
@@ -108,8 +113,11 @@ public class ArtificialPlayer extends GamePlayer{
 		}
 	}
 
+
     @Override
     public boolean handleGameMessage(String messageType, Map<String, Object> msgDetails) {
+		System.out.println("Current turn: " + this.turn_tracker);
+		System.out.println("GAME MESSAGE RECEIVED");
 
     	//This method will be called by the GameClient when it receives a game-related message
     	//from the server.
@@ -117,49 +125,75 @@ public class ArtificialPlayer extends GamePlayer{
     	//For a detailed description of the message types and format, 
     	//see the method GamePlayer.handleGameMessage() in the game-client-api document.
 		if (messageType.equals(GameMessage.GAME_STATE_BOARD)){
-			// Full board snapshot from server; replace local copy.
-			ArrayList<Integer> boardState = (ArrayList<Integer>) msgDetails.get(AmazonsGameMessage.GAME_STATE);
-			if (boardState != null) {
-				this.gameBoard = new ArrayList<>(boardState);
-				this.getGameGUI().setGameState(boardState);
-			}
+			System.out.println("\nGAME STATE UPDATE RECEIVED");
+			ArrayList<Integer> gameS = (ArrayList)msgDetails.get("game-state");
+			System.out.println("Game Board: " + gameS);
+			this.gameBoard = gameS;
+			this.gamegui.setGameState(gameS);
+			this.turn_tracker=0;
 		}
 		if (messageType.equals(GameMessage.GAME_ACTION_START)) {
+			System.err.println("\nGAME START MESSAGE RECEIVED");
             String blackPlayer = (String) msgDetails.get(AmazonsGameMessage.PLAYER_BLACK);
             String whitePlayer = (String) msgDetails.get(AmazonsGameMessage.PLAYER_WHITE);
 			// Detect our side once the game starts; used by heuristic perspective.
 			if (userName.equals(blackPlayer)) {
 				myPlayerCode = BLACK_QUEEN;
-				this.turn_tracker =1;
 			} else if (userName.equals(whitePlayer)) {
-				this.turn_tracker =0;
 				myPlayerCode = WHITE_QUEEN;
 			}
+
+			this.turn_tracker=0;
+			this.gameEnded = false;
+			this.moveTree = new ArtificialMoveTree(this);
+
+
             System.out.println("\n\nGame started.");
             System.out.println("Room users at start: Black=" + blackPlayer + ", White=" + whitePlayer);
             System.out.println("Current login user: " + userName+"\n\n");
-            ArrayList<Integer> gameState = (ArrayList<Integer>) msgDetails.get(AmazonsGameMessage.GAME_STATE);
-            if (gameState != null && this.getGameGUI() != null) {
-				// Save initial board state and draw it.
-				this.gameBoard = new ArrayList<>(gameState);
-                this.getGameGUI().setGameState(gameState);
-				this.moveTree = new ArtificialMoveTree(this);
-            }
+			if(this.sendNextMoveIfTurn()){
+				System.out.println("Made first move.");
+			}
 		}
 		if (messageType.equals(GameMessage.GAME_STATE_PLAYER_LOST)) {
+			System.err.println("\nGAME END MESSAGE RECEIVED");
+			gameEnded = true;
+			// Get information about the losing player (if included in the message)
+			Object loserObj = msgDetails.get("player-lost");
+			String loserName = null;
+			if (loserObj instanceof String) {
+				loserName = (String) loserObj;
+			}
 			
+			System.out.println("\n=========================================");
+			System.out.println("Game ended!");
+			
+			if (loserName != null) {
+				System.out.println("Player lost: " + loserName);
+				if (loserName.equals(userName)) {
+					System.out.println("You lost!");
+				} else {
+					System.out.println("You won!");
+				}
+			} else {
+				System.out.println("Game ended.");
+			}
+			System.out.println("=========================================\n");
 		}
 		if (messageType.equals(GameMessage.GAME_ACTION_MOVE)){
+			System.out.println("MOVE MESSAGE RECEIVED");
 			// Incremental move update: source, destination, and arrow position.
 			ArrayList<Integer> from = (ArrayList<Integer>) msgDetails.get(AmazonsGameMessage.QUEEN_POS_CURR);
 			ArrayList<Integer> to = (ArrayList<Integer>) msgDetails.get(AmazonsGameMessage.QUEEN_POS_NEXT);
 			ArrayList<Integer> arrow = (ArrayList<Integer>) msgDetails.get(AmazonsGameMessage.ARROW_POS);
 			// Keep local board state in sync for any subsequent AI calculation.
 			this.heuristicEvaluator.applyMove(this.gameBoard, from, to, arrow);
-			this.moveTree.progressMove();
-			// Let GUI apply the same update for visualization.
 			this.getGameGUI().updateGameState(msgDetails);
+			// Let GUI apply the same update for visualization.
 			this.turn_tracker++;
+			this.moveTree.progressMove();
+			this.sendNextMoveIfTurn();
+
 		}
     	return true;
     }
@@ -169,6 +203,63 @@ public class ArtificialPlayer extends GamePlayer{
 	//realistically should be called at the start of this player's turn
 	public ArrayList<ArrayList<Integer>> getNextMove(){
 		return this.moveTree.getNextMove();
+	}
+
+	public boolean sendNextMoveIfTurn() {
+		if (gameEnded) {
+			return false;
+		}
+		
+		if(this.turn_tracker%2 + 1==this.myPlayerCode){
+			try {
+				Thread.sleep(1000);
+			} catch (InterruptedException e) {
+				throw new RuntimeException(e);
+			}
+			
+			// Check if we have valid moves before trying to get one; if not, we lose by default.
+			if (!this.moveTree.hasValidMoves()) {
+				gameEnded = true;
+				System.out.println("\n=========================================");
+				System.out.println("Game ended!");
+				System.out.println("Player " + userName + " has no valid moves.");
+				System.out.println("You lost!");
+				System.out.println("=========================================\n");
+				return false;
+			}
+			
+			System.out.println("Sending move...");
+			ArrayList<ArrayList<Integer>> moves = this.getNextMove();
+			
+			if (moves == null) {
+				gameEnded = true;
+				System.out.println("\n=========================================");
+				System.out.println("Game ended!");
+				System.out.println("Unable to generate valid moves.");
+				System.out.println("You lost!");
+				System.out.println("=========================================\n");
+				return false;
+			}
+			
+			this.heuristicEvaluator.applyMove(this.gameBoard, moves.get(0),moves.get(1),moves.get(2));
+			this.gameClient.sendMoveMessage(moves.get(0),moves.get(1),moves.get(2));
+			this.updateMove(moves.get(0),moves.get(1),moves.get(2));
+			this.turn_tracker++;
+			this.moveTree.progressMove();
+			return true;
+		}
+
+		return false;
+	}
+
+	public void updateMove(ArrayList<Integer> queenPosCurrent, ArrayList<Integer> queenPosNew, ArrayList<Integer> arrowPos) {
+		Map<String, Object> data = new HashMap<>();
+		data.put(AmazonsGameMessage.QUEEN_POS_CURR, queenPosCurrent);
+		data.put(AmazonsGameMessage.QUEEN_POS_NEXT, queenPosNew);
+		data.put(AmazonsGameMessage.ARROW_POS, arrowPos);
+		this.gamegui.updateGameState(data);
+
+
 	}
     
     @Override

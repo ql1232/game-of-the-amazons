@@ -1,201 +1,197 @@
 package ubc.cosc322;
 
-import java.lang.reflect.Array;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.PriorityQueue;
-
-import static java.lang.Integer.valueOf;
 import static java.util.Arrays.asList;
+import java.util.List;
 
 public class ArtificialMoveTree {
     ArtificialPlayer player;
-    int max_depth = 10;
-
-    ArrayList<MoveNode> parents = new ArrayList<>(); //this stores the parents of the leaf nodes to make minimax sorting easier
     MoveNode current;
-    public ArtificialMoveTree(ArtificialPlayer player){
-        this.player=player;
-        current = new MoveNode(null,this.player,null,0);
-        this.expandDepth(current,0);
+
+    // Search depth (plies). Increase for stronger play at the cost of time.
+    private static final int SEARCH_DEPTH = 2;
+
+    // Per-search statistics (reset each call to getNextMoveNode).
+    private int nodesEvaluated;
+    private int betaCutoffs;
+    private int alphaCutoffs;
+
+    public ArtificialMoveTree(ArtificialPlayer player) {
+        System.out.println("Move tree initialized.");
+        this.player = player;
+        current = new MoveNode(null, player.gameBoard);
     }
 
-    public void expandDepth(MoveNode root, int count){
-        if(count==this.max_depth){
-            return;
+    /**
+     * Returns the MoveNode representing the best move found via alpha-beta
+     * minimax search to SEARCH_DEPTH plies.
+     */
+    MoveNode getNextMoveNode() {
+        int myColor = player.myPlayerCode;
+        List<ArrayList<ArrayList<Integer>>> moves = getAllMoves(current.gameState, myColor);
+        if (moves.isEmpty()) return null;
+
+        // Reset per-search counters.
+        nodesEvaluated = 0;
+        betaCutoffs    = 0;
+        alphaCutoffs   = 0;
+        long startTime = System.currentTimeMillis();
+
+        int bestValue = Integer.MIN_VALUE;
+        MoveNode bestChild = null;
+        int alpha = Integer.MIN_VALUE;
+        int beta  = Integer.MAX_VALUE;
+
+        for (ArrayList<ArrayList<Integer>> move : moves) {
+            ArrayList<Integer> newBoard = applyMoveToBoard(current.gameState, move);
+            int value = alphaBeta(newBoard, SEARCH_DEPTH - 1, alpha, beta, false, myColor);
+            if (value > bestValue) {
+                bestValue = value;
+                bestChild = new MoveNode(move, newBoard);
+            }
+            alpha = Math.max(alpha, value);
         }
-        root.generateChildrenInitial();
-        if(count==this.max_depth-1){
-            this.parents.add(root);
+
+        long elapsed = System.currentTimeMillis() - startTime;
+        String colorName = (myColor == 1) ? "BLACK" : "WHITE";
+        System.out.println("\n========== Alpha-Beta Search Report ==========");
+        System.out.printf("  Player     : %s (code=%d)%n", colorName, myColor);
+        System.out.printf("  Depth      : %d plies%n", SEARCH_DEPTH);
+        System.out.printf("  Root moves : %d candidates%n", moves.size());
+        System.out.printf("  Nodes eval : %d%n", nodesEvaluated);
+        System.out.printf("  Beta cuts  : %d%n", betaCutoffs);
+        System.out.printf("  Alpha cuts : %d%n", alphaCutoffs);
+        System.out.printf("  Best score : %d%n", bestValue);
+        if (bestChild != null && bestChild.move != null) {
+            System.out.printf("  Best move  : from%s -> to%s, arrow%s%n",
+                    bestChild.move.get(0), bestChild.move.get(1), bestChild.move.get(2));
         }
-        for(MoveNode child: root.children){
-            this.expandDepth(child, count+1);
+        System.out.printf("  Time taken : %d ms%n", elapsed);
+        System.out.println("===============================================\n");
+
+        return bestChild;
+    }
+
+    /**
+     * Recursive alpha-beta minimax.
+     *
+     * @param boardState   current board position to evaluate or expand
+     * @param depth        remaining depth (0 = leaf, evaluate immediately)
+     * @param alpha        best score the maximizer can guarantee so far
+     * @param beta         best score the minimizer can guarantee so far
+     * @param isMaximizing true when it is myColor's turn at this ply
+     * @param myColor      the AI's own piece code (1 = black, 2 = white)
+     * @return heuristic score from myColor's perspective
+     */
+    private int alphaBeta(ArrayList<Integer> boardState, int depth,
+                          int alpha, int beta, boolean isMaximizing, int myColor) {
+        if (depth == 0) {
+            nodesEvaluated++;
+            return player.heuristicEvaluator.evaluate(boardState, myColor);
+        }
+
+        int color = isMaximizing ? myColor : (3 - myColor);
+        List<ArrayList<ArrayList<Integer>>> moves = getAllMoves(boardState, color);
+
+        if (moves.isEmpty()) {
+            // Current mover has no legal moves — terminal loss for that side.
+            return isMaximizing ? Integer.MIN_VALUE / 2 : Integer.MAX_VALUE / 2;
+        }
+
+        if (isMaximizing) {
+            int value = Integer.MIN_VALUE;
+            for (ArrayList<ArrayList<Integer>> move : moves) {
+                ArrayList<Integer> newBoard = applyMoveToBoard(boardState, move);
+                value = Math.max(value,
+                        alphaBeta(newBoard, depth - 1, alpha, beta, false, myColor));
+                alpha = Math.max(alpha, value);
+                if (beta <= alpha) {
+                    betaCutoffs++;
+                    break; // beta cutoff
+                }
+            }
+            return value;
+        } else {
+            int value = Integer.MAX_VALUE;
+            for (ArrayList<ArrayList<Integer>> move : moves) {
+                ArrayList<Integer> newBoard = applyMoveToBoard(boardState, move);
+                value = Math.min(value,
+                        alphaBeta(newBoard, depth - 1, alpha, beta, true, myColor));
+                beta = Math.min(beta, value);
+                if (beta <= alpha) {
+                    alphaCutoffs++;
+                    break; // alpha cutoff
+                }
+            }
+            return value;
         }
     }
 
-    //gets the best immediate next move based on depth search
-    //returns an arraylist of arraylists containing the 3 arraylists corresponding to move syntax
-    MoveNode getNextMoveNode(){
-        //we take advantage of pqueue sorting to simply peek the best values of the minimax tree and take them
+    /**
+     * Generates all legal moves for {@code color} on {@code boardState}.
+     * Each move is encoded as [from, to, arrow], each element being [row, col].
+     */
+    List<ArrayList<ArrayList<Integer>>> getAllMoves(ArrayList<Integer> boardState, int color) {
+        List<ArrayList<ArrayList<Integer>>> allMoves = new ArrayList<>();
+        HeuristicEvaluator eval = player.heuristicEvaluator;
 
-        PriorityQueue<MoveNode> parent_comp=new PriorityQueue<>();
-        if(this.is_max()){
-            parent_comp=new PriorityQueue<>(Collections.reverseOrder());
-        }
-
-        for(MoveNode m: this.parents){
-            if(!m.children.isEmpty()){
-                parent_comp.add(m.children.peek());
-            }else{
-                parent_comp.add(m);
+        for (int i = 1; i <= 10; i++) {
+            for (int j = 1; j <= 10; j++) {
+                if (eval.getCell(boardState, i, j) != color) continue;
+                ArrayList<Integer> from = new ArrayList<>(asList(i, j));
+                for (ArrayList<Integer> to : eval.generateValidMoves(boardState, from)) {
+                    // Clear the queen's source square so the arrow may pass back through it.
+                    ArrayList<Integer> tempBoard = new ArrayList<>(boardState);
+                    eval.setCell(tempBoard, i, j, 0);
+                    for (ArrayList<Integer> arrow : eval.generateValidMoves(tempBoard, to)) {
+                        ArrayList<ArrayList<Integer>> move = new ArrayList<>(3);
+                        move.add(new ArrayList<>(from));
+                        move.add(new ArrayList<>(to));
+                        move.add(new ArrayList<>(arrow));
+                        allMoves.add(move);
+                    }
+                }
             }
         }
-        return this.findImmediateNode(parent_comp.peek());
-    }
-    ArrayList<ArrayList<Integer>> getNextMove(){
-        return this.getNextMoveNode().move;
-    }
-    boolean is_max(){ //determines if we need to take the max of the min children (true) or min of the max children (false)
-        return (player.turn_tracker+this.max_depth) % 2 != 0;
-    }
-    void progressMove(){
-        //applies a move to traverse the tree
-        //the children nodes need to be updated to the next max_depth
-
-        //updates the current pointer node to be the actual game state
-        for(MoveNode m: this.current.children){
-            if(this.player.gameBoard.equals(m.gameState)){
-                this.current = m;
-                break;
-            }
-        }
-
-        this.pruneTree();
-
-        ArrayList<MoveNode> new_parents = new ArrayList<>();
-        for(MoveNode m: this.parents){
-            for(MoveNode mn: m.children){
-                mn.generateChildren();
-                if(mn.children.isEmpty()){
-                    new_parents.add(mn.parent);
-                }else{
-                new_parents.add(mn);}
-            }
-        }
-        this.parents=new_parents;
-    }
-    void pruneTree(){
-        //cleans up the tree to avoid generating for dead nodes that cannot be achieved
-        ArrayList<MoveNode> new_parents = new ArrayList<>();
-        for(MoveNode m: this.parents){
-            if(findImmediateNode(m).parent.equals(this.current)){
-                new_parents.add(m);
-            }
-        }
-        this.parents=new_parents;
+        return allMoves;
     }
 
-    MoveNode findImmediateNode(MoveNode ideal_node){
-        //traverse up the ideal future game state's tree to find the immediate next move
-        if(ideal_node==null){
-            return null;
-        }
-        MoveNode next_node = ideal_node;
-        while(true){
-            ideal_node=ideal_node.parent;
-            if(ideal_node.equals(this.current)){
-                break;
-            }
-            next_node=next_node.parent;
-        }
-        return next_node;
+    /** Returns a new board state with the given move applied, leaving boardState unchanged. */
+    private ArrayList<Integer> applyMoveToBoard(ArrayList<Integer> boardState,
+                                                ArrayList<ArrayList<Integer>> move) {
+        ArrayList<Integer> newBoard = new ArrayList<>(boardState);
+        player.heuristicEvaluator.applyMove(newBoard, move.get(0), move.get(1), move.get(2));
+        return newBoard;
+    }
+
+    ArrayList<ArrayList<Integer>> getNextMove() {
+        MoveNode nextNode = getNextMoveNode();
+        return (nextNode != null) ? nextNode.move : null;
+    }
+
+    boolean hasValidMoves() {
+        return !getAllMoves(current.gameState, player.myPlayerCode).isEmpty();
+    }
+
+    boolean is_max() {
+        return true;
+    }
+
+    /**
+     * Syncs the search root to the latest actual game board after any player's move.
+     */
+    void progressMove() {
+        current = new MoveNode(null, player.gameBoard);
+        System.out.println("Progressed move: search root updated.");
     }
 }
 
-class MoveNode implements Comparable<MoveNode>{
-    PriorityQueue<MoveNode> children = new PriorityQueue<>();
-    ArrayList<Integer> gameState = new ArrayList<>();
-    MoveNode parent;
-    int value;
-    int max_depth;
+class MoveNode {
+    ArrayList<Integer> gameState;
     ArrayList<ArrayList<Integer>> move;
-    HeuristicEvaluator eval;
-    ArtificialPlayer player;
-    public MoveNode(MoveNode parent, ArtificialPlayer player, ArrayList<ArrayList<Integer>> associatedMove, int depth){
-        this.move=associatedMove;
-        this.player=player;
-        this.max_depth = depth;
-        this.eval = this.player.heuristicEvaluator;
-        this.parent=parent;
 
-        //make a fake gameboard for evaluation, then store this movenode's gamestate
-
-        ArrayList<Integer> fake_board = new ArrayList<>();
-        if(parent!=null){
-            fake_board = new ArrayList<>(parent.gameState);
-        }else{
-            fake_board = new ArrayList<>(player.gameBoard);
-        }
-        if(associatedMove!=null){
-            player.heuristicEvaluator.applyMove(fake_board,associatedMove.get(0),associatedMove.get(1),associatedMove.get(2));
-        }
-        this.gameState=new ArrayList<>(fake_board);
-        this.value = player.heuristicEvaluator.evaluate(fake_board,player.myPlayerCode);
-
-        if((this.player.turn_tracker+this.max_depth) % 2 == 0){
-            children = new PriorityQueue<>(Collections.reverseOrder());
-        }
-    }
-    public void generateChildren(){
-        int color = (this.player.turn_tracker+this.max_depth +1) % 2 + 1;
-        for(int i = 1; i<11; i++){
-            for(int j = 1; j < 11; j++){
-                if(this.eval.getCell(this.gameState,i,j)==color){
-                    ArrayList<ArrayList<Integer>> moves = this.eval.generateValidMoves(this.gameState,new ArrayList<>(asList(i,j)));
-                    for(ArrayList<Integer> to: moves){
-
-                        ArrayList<Integer> fake_board = new ArrayList<>(this.gameState);
-                        this.eval.setCell(fake_board,i,j,0);
-                        ArrayList<ArrayList<Integer>> arrows = this.eval.generateValidMoves(fake_board,to);
-
-                        ArrayList<Integer> from = new ArrayList<>(asList(i,j));
-
-                        for(ArrayList<Integer> arrow: arrows){
-                            MoveNode mn = new MoveNode(this,this.player, new ArrayList<>(asList(from, to, arrow)), max_depth);
-                            this.children.add(mn);
-                        }
-
-                    }
-                }
-            }
-        }
-    }
-    public void generateChildrenInitial(){
-        int color = (this.player.turn_tracker+this.max_depth +1) % 2 + 1;
-        for(int i = 1; i<11; i++){
-            for(int j = 1; j < 11; j++){
-                if(this.eval.getCell(this.gameState,i,j)==color){
-                    ArrayList<ArrayList<Integer>> moves = this.eval.generateValidMoves(this.gameState,new ArrayList<>(asList(i,j)));
-                    for(ArrayList<Integer> to: moves){
-
-                        ArrayList<Integer> fake_board = new ArrayList<>(this.gameState);
-                        this.eval.setCell(fake_board,i,j,0);
-                        ArrayList<ArrayList<Integer>> arrows = this.eval.generateValidMoves(fake_board,to);
-
-                        ArrayList<Integer> from = new ArrayList<>(asList(i,j));
-
-                        for(ArrayList<Integer> arrow: arrows){
-                            MoveNode mn = new MoveNode(this,this.player, new ArrayList<>(asList(from, to, arrow)), max_depth+1);
-                            this.children.add(mn);
-                        }
-
-                    }
-                }
-            }
-        }
-    }
-    @Override
-    public int compareTo(MoveNode o) {
-        return this.value-o.value;
+    public MoveNode(ArrayList<ArrayList<Integer>> move, ArrayList<Integer> boardState) {
+        this.move = move;
+        this.gameState = new ArrayList<>(boardState);
     }
 }
